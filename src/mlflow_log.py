@@ -39,10 +39,13 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
     def __init__(self, config, metric_calculator):
         super().__init__()
         self.finished_epochs = 0
+        self.acquisition_steps = 0
         self.best_result = 0.0
-        self.new_best_result = False
+        self.best_result_epoch = 0
         self.config = config
         self.metric_calculator = metric_calculator
+        self.params = {}
+        self.params['steps'] = 0
 
     def on_batch_end(self, batch: int, logs=None):
         if batch % 100 == 0:
@@ -52,28 +55,37 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
             mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
-        metrics_dict, _ = self.metric_calculator.calc_metrics()
-        self.finished_epochs = epoch + 1
+        self.finished_epochs = self.finished_epochs + 1
+
+        metrics_for_monitoring = self.config['model']['metrics_for_monitoring']
+
+        if self.finished_epochs % self.config['logging']['val_log_epoch_interval'] == 0:
+            metrics_dict, _ = self.metric_calculator.calc_metrics()
+            current_step = int(self.finished_epochs * self.params['steps'])
+            mlflow.log_metrics(metrics_dict, step=current_step)
+            mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
+            mlflow.log_metric('acquisition_steps', self.acquisition_steps, step=current_step)
+            if metrics_dict[metrics_for_monitoring] > self.best_result:
+                self.best_result_epoch = self.finished_epochs
+                print("\n New best model! Saving model..")
+                self.best_result = metrics_dict[metrics_for_monitoring]
+                if self.config["model"]["save_model"]:
+                    self._save_model('acquisition_' + str(self.acquisition_steps))
+                mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring])
+                mlflow.log_metric("saved_model_epoch", self.finished_epochs)
+            else:
+                patience = self.config['data']['active_learning']['acquisition']['after_epochs_of_no_improvement']
+                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.7:
+                    self.model.stop_training = True
+
+    def data_acquisition_logging(self, data_aquisition_dict):
         current_step = int(self.finished_epochs * self.params['steps'])
+        mlflow.log_metrics(data_aquisition_dict, step=current_step)
+        self.acquisition_steps = self.acquisition_steps + 1
 
-        mlflow.log_metrics(metrics_dict, step=current_step)
-        mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
 
-        # Check if new best model
-        metrics_for_model_saving = self.config['model']['metrics_for_model_saving']
-        if metrics_dict[metrics_for_model_saving] > self.best_result:
-            self.new_best_result = True
-            print("\n New best model! Saving model..")
-            self.best_result = metrics_dict[metrics_for_model_saving]
-            if self.config["model"]["save_model"]:
-                self._save_model()
-            mlflow.log_metric("best_" + metrics_for_model_saving, metrics_dict[metrics_for_model_saving])
-            mlflow.log_metric("saved_model_epoch", self.finished_epochs)
-        else:
-            self.new_best_result = False
-
-    def _save_model(self):
-        save_dir = os.path.join(self.config["output_dir"], "models")
+    def _save_model(self, name: str):
+        save_dir = os.path.join(self.config["output_dir"], "models/" + name)
         os.makedirs(save_dir, exist_ok=True)
         fe_path = os.path.join(save_dir, "feature_extractor.h5")
         head_path = os.path.join(save_dir, "head.h5")

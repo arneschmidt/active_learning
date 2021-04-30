@@ -22,7 +22,7 @@ def main(config: Dict):
     data_gen = DataGenerator(config)
 
     print("Load classification model")
-    model = Model(config, data_gen.num_training_samples)
+    model = Model(config, data_gen.get_number_of_training_points())
 
     if config["model"]["mode"] == "train":
         print("Train")

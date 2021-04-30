@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 import tensorflow_addons as tfa
 import numpy as np
+import pandas as pd
 from mlflow_log import MLFlowCallback, format_metrics_for_mlflow
 from model_architecture import create_model
 from sklearn.utils import class_weight
@@ -39,49 +40,34 @@ class Model:
         # initialize callback for training procedure: logging and metrics calculation at the end of each epoch
         metric_calculator = MetricCalculator(self.model, data_gen, self.config, mode='val')
         mlflow_callback = MLFlowCallback(self.config, metric_calculator)
-        callbacks = [mlflow_callback]
+        patience = int(self.config['data']['active_learning']['acquisition']['labels_per_wsi'])
+        stop_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0.01, patience=patience)
+        callbacks = [mlflow_callback, stop_callback]
 
         # initialize generators with weak and strong augmentation
-        train_generator_weak_aug = data_gen.train_generator_weak_aug
-        train_generator_strong_aug = data_gen.train_generator_strong_aug
         class_weights = None
 
-        steps_all = np.ceil(train_generator_strong_aug.n / self.batch_size)
-        steps_positive_bags_only = np.ceil(train_generator_weak_aug.n / self.batch_size)
-        predictions_indices = np.array(data_gen.train_df_weak_aug['index'])
-
-        num_pseudo_labels = self.config['data']['positive_pseudo_instance_labels_per_bag']
-        label_weights = self.config['data']['label_weights']
-
-        # loop for training per epochs
-        for epoch in range(self.config["model"]["epochs"]):
-            # Semi-supervised MIL case: make predictions, produce pseudo labels and soft labels
-            if self.config['data']['supervision'] == 'mil':
-                print('Make predictions to produce pseudo labels..')
-                predictions = self.model.predict(train_generator_weak_aug, batch_size=self.batch_size, steps=steps_positive_bags_only, verbose=1)
-                training_targets, sample_weights = combine_pseudo_labels_with_instance_labels(predictions, predictions_indices,
-                                                                                              data_gen.train_df, num_pseudo_labels, label_weights)
-            # Supervised case: get one hot targets from labels
-            else:
-                training_targets, sample_weights = get_one_hot_training_targets(data_gen.train_df, label_weights,
-                                                                                self.num_classes)
+        # acquisition loop
+        total_acquisition_steps = int(self.config["data"]["active_learning"]["acquisition"]["total_steps"])
+        for acquisition_step in range(total_acquisition_steps):
+            self.n_training_points = data_gen.get_number_of_training_points()
+            mlflow_callback.data_acquisition_logging(data_gen.get_labeling_statistics())
             # Optional: class-weighting based on groundtruth and estimated labels
             if self.config["model"]["class_weighted_loss"]:
-                class_weights = self._calculate_class_weights(training_targets)
+                class_weights = self._calculate_class_weights(data_gen.train_df)
 
-            # Use gt, pseudo and soft labels to train based on the strongly augmented images
-            train_mil_generator = get_data_generator_with_targets(train_generator_strong_aug, training_targets, sample_weights)
-            try:
-                self.model.fit(
-                    train_mil_generator,
-                    epochs=epoch+1,
-                    class_weight=class_weights,
-                    initial_epoch=epoch,
-                    steps_per_epoch=steps_all,
-                    callbacks=[callbacks],
-                )
-            except:
-                print('Problem in model training, skipping epoch.')
+            steps = np.ceil(self.n_training_points / self.batch_size)
+            self._set_kl_weight(acquisition_step)
+            self.model.fit(
+                data_gen.train_generator_labeled,
+                epochs=500,
+                class_weight=class_weights,
+                steps_per_epoch=steps,
+                callbacks=callbacks,
+            )
+            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
+            train_indices = self.select_data_for_labeling(uncertainties_of_unlabeled, data_gen)
+            data_gen.query_from_oracle(train_indices)
 
     def test(self, data_gen: DataGenerator):
         """
@@ -110,7 +96,7 @@ class Model:
         """
         output_dir = self.config['output_dir']
         feature_extractor = self.model.layers[0]
-        generators = {'Train': data_gen.train_generator_weak_aug,
+        generators = {'Train': data_gen.train_generator_labeled,
                       'Val': data_gen.validation_generator,
                       'Test': data_gen.test_generator}
         dataframes = {'Train': data_gen.train_df,
@@ -124,18 +110,89 @@ class Model:
             train_predictions = self.model.predict(generator, steps=train_steps)
             save_dataframe_with_output(dataframes[mode], train_predictions, train_features, output_dir, mode)
 
-    def _calculate_class_weights(self, training_targets: np.array):
+    def predict_uncertainties(self, generator):
+        print('Predict uncertainties..')
+        number_of_samples = 10
+        feature_extractor = self.model.layers[0]
+        cnn_out = feature_extractor.predict(generator, verbose=True)
+        vgp = self.model.layers[1].layers[0]
+        uncertainties = np.array([])
+        batch_size = 128
+        steps = int(np.ceil(len(cnn_out) / 128))
+        for step in range(steps):
+            start = step * batch_size
+            stop = (step + 1) * batch_size
+            if stop > len(cnn_out):
+                stop = len(cnn_out)
+            pred = tf.nn.softmax(vgp(cnn_out[start:stop]).sample(number_of_samples))
+            uncertainty = self.uncertainty_calculation(pred)
+            uncertainties = np.concatenate((uncertainties, uncertainty))
+        uncertainties = np.array(uncertainties)
+        assert uncertainties.size == generator.n
+        return uncertainties
+
+    def uncertainty_calculation(self, prediction_samples):
+        acquisition_method = self.config['data']['active_learning']['acquisition']['strategy']
+        if acquisition_method == 'max_var':
+            uncertainty = np.mean(np.std(prediction_samples, axis=0), axis=-1)
+        elif acquisition_method == 'entropy':
+            mean = np.mean(prediction_samples, axis=0)
+            uncertainty = np.sum(- np.multiply(mean, np.log(mean)), axis=1)
+        elif acquisition_method == 'bald':
+            mean = np.mean(prediction_samples, axis=0)
+            entropy = np.sum(- np.multiply(mean, np.log(mean)), axis=1)
+            uncertainty = entropy + np.mean(
+                np.sum(np.multiply(prediction_samples, np.log(prediction_samples)), axis=-1), axis=0)
+        return uncertainty
+
+    def select_data_for_labeling(self, uncertainties: np.array, data_gen: DataGenerator):
+        print('Select data to be labeled..')
+        dataframe = data_gen.train_df.loc[np.logical_not(data_gen.train_df['labeled'])]
+        wsi_dataframe = data_gen.wsi_df
+
+        wsis_per_acquisition = self.config['data']['active_learning']['acquisition']['wsis']
+        labels_per_wsi = self.config['data']['active_learning']['acquisition']['labels_per_wsi']
+        sorted_rows = np.argsort(uncertainties)[::-1]
+        selected_wsis = []
+        already_labeled_wsi = wsi_dataframe['slide_id'].loc[wsi_dataframe['labeled']]
+        # get the WSIs with the highest uncertainties
+        for row in sorted_rows:
+            wsi_name = dataframe['wsi'].iloc[[row]].values[0]
+            if wsi_name not in selected_wsis and not np.any(already_labeled_wsi.str.contains(wsi_name)):
+                selected_wsis.append(wsi_name)
+            if len(selected_wsis) >= wsis_per_acquisition:
+                break
+        selected_wsis = np.array(selected_wsis)
+
+        # get the highest uncertainties of the selected WSIs
+        ids = np.array([])
+        for wsi in selected_wsis:
+            wsi_rows = np.array([])
+            for row in sorted_rows:
+                if dataframe['wsi'].iloc[row] == wsi:
+                    wsi_rows = np.concatenate([row, wsi_rows], axis=None)
+                if wsi_rows.size >= labels_per_wsi:
+                    break
+            wsi_ids = dataframe['index'].iloc[wsi_rows].values[:]
+            ids = np.concatenate([ids, wsi_ids], axis=None)
+        if ids.size != wsis_per_acquisition*labels_per_wsi:
+            print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
+            print('Requested labels: ', ids.size)
+            raise Warning('Not enough labels obtained!')
+        return ids
+
+    def _calculate_class_weights(self, train_df: pd.DataFrame):
         """
         Calculate class weights based on gt, pseudo and soft labels.
         :param training_targets: gt, pseudo and soft labels (fused)
         :return: class weight dict
         """
-        class_predictions = np.argmax(training_targets, axis=1)
+        labels = np.array(train_df['class'].loc[train_df['labeled']], dtype=int)
         classes = np.arange(0,self.num_classes)
         class_weights_array = class_weight.compute_class_weight(
             class_weight='balanced',
             classes=classes,
-            y=class_predictions)
+            y=labels)
         class_weights = {}
         for class_id in classes:
             class_weights[class_id] = class_weights_array[class_id]
@@ -168,6 +225,17 @@ class Model:
                                     # tfa.metrics.F1Score(num_classes=self.num_classes),
                                     # tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
                                     ])
+
+    def _set_kl_weight(self, acquisition_step):
+        kl_weights = self.config['model']['head']['gp']['kl_weights']
+        if len(kl_weights) < acquisition_step:
+            kl_weight = kl_weights[-1]
+        else:
+            kl_weight = kl_weights[acquisition_step]
+        weight = tf.cast(kl_weight * self.batch_size / self.n_training_points, tf.float32)
+
+        self.model.layers[1].variables[7].assign(weight)
+
 
     def _load_combined_model(self, artifact_path: str = "./models/"):
         model_path = os.path.join(artifact_path, "models")
