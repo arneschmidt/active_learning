@@ -10,7 +10,7 @@ class MLFlowLogger:
     """
     def __init__(self, config: Dict):
         mlflow.set_tracking_uri(config["logging"]["tracking_url"])
-        experiment_id = mlflow.set_experiment(experiment_name=config["data"]["dataset_name"])
+        experiment_id = mlflow.set_experiment(experiment_name='active_' + config["data"]["dataset_name"])
         mlflow.start_run(experiment_id=experiment_id, run_name=config["logging"]["run_name"])
         self.config = config
 

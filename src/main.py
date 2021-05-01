@@ -84,5 +84,4 @@ if __name__ == "__main__":
     config['output_dir'] = os.path.join(config['data']['artifact_dir'], config['logging']['run_name'])
     os.makedirs(config['output_dir'], exist_ok=True)
     print('Output will be written to: ', config['output_dir'])
-
     main(config)

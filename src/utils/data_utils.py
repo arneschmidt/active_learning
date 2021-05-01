@@ -40,9 +40,10 @@ def get_start_label_ids(dataframe, wsi_dataframe, data_config):
             wsi_candidates = (wsi_dataframe['class_primary'] == int(class_id)) & (wsi_dataframe['Partition'] == 'train')
             wsi_selection = np.random.choice(wsi_dataframe['slide_id'].loc[wsi_candidates], size=1)
             df_candidates = (dataframe['wsi'] == wsi_selection[0]) & (dataframe['class'] == class_id)
-            if len(df_candidates) >= data_config['active_learning']['start']['labels_per_class_and_wsi']:
+            if np.sum(df_candidates) >= data_config['active_learning']['start']['labels_per_class_and_wsi']:
                 break
-            raise Exception('Not enough start samples found. Choose a smaller number of labels per WSI.')
+            elif attempt == 9:
+                raise Exception('Not enough start samples found. Choose a smaller number of labels per WSI.')
         wsi_dataframe['labeled'].loc[wsi_dataframe['slide_id'] == wsi_selection[0]] = True
         df_selection = np.random.choice(dataframe['index'].loc[df_candidates],
                                         size=data_config['active_learning']['start']['labels_per_class_and_wsi'],
