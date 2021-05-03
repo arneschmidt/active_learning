@@ -41,8 +41,7 @@ class Model:
         metric_calculator = MetricCalculator(self.model, data_gen, self.config, mode='val')
         mlflow_callback = MLFlowCallback(self.config, metric_calculator)
         patience = int(self.config['data']['active_learning']['acquisition']['labels_per_wsi'])
-        stop_callback = tf.keras.callbacks.EarlyStopping(monitor='loss', min_delta=0.01, patience=patience)
-        callbacks = [mlflow_callback, stop_callback]
+        callbacks = [mlflow_callback]
 
         # initialize generators with weak and strong augmentation
         class_weights = None
