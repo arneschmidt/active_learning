@@ -129,8 +129,8 @@ class DataGenerator():
         if self.config['data']["dataset_type"] == "prostate_cancer":
             out_dict['number_of_patches_NC'] = np.sum(train_df['class'] == '0')
             out_dict['number_of_patches_GG3'] = np.sum(train_df['class'] == '1')
-            out_dict['number_of_patches_GG4'] = np.sum(train_df['class'] == '1')
-            out_dict['number_of_patches_GG5'] = np.sum(train_df['class'] == '1')
+            out_dict['number_of_patches_GG4'] = np.sum(train_df['class'] == '2')
+            out_dict['number_of_patches_GG5'] = np.sum(train_df['class'] == '3')
 
         return out_dict
 
