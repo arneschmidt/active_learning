@@ -42,6 +42,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         self.acquisition_steps = 0
         self.best_result = 0.0
         self.best_result_epoch = 0
+        self.best_weights = None
         self.config = config
         self.metric_calculator = metric_calculator
         self.params = {}
@@ -69,6 +70,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
                 self.best_result_epoch = self.finished_epochs
                 print("\n New best model! Saving model..")
                 self.best_result = metrics_dict[metrics_for_monitoring]
+                self.best_weights = self.model.get_weights()
                 if self.config["model"]["save_model"]:
                     self._save_model('acquisition_' + str(self.acquisition_steps))
                 mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring])

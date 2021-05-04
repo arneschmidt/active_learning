@@ -57,7 +57,7 @@ class Model:
 
             steps = np.ceil(self.n_training_points / self.batch_size)
             self._set_kl_weight(acquisition_step)
-            weights = self.model.get_weights()
+
             for i in range(5):
                 try:
                     self.model.fit(
@@ -70,7 +70,7 @@ class Model:
                     success = True
                 except:
                     print('Failure in training, try again')
-                    self.model.set_weights(weights)
+                    self.model.set_weights(mlflow_callback.best_weights)
                     success = False
                 if success:
                     break
