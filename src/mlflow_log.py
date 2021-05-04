@@ -78,10 +78,10 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
                 if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.7:
                     self.model.stop_training = True
 
-    def data_acquisition_logging(self, data_aquisition_dict):
+    def data_acquisition_logging(self, total_acquisition_steps, data_aquisition_dict):
         current_step = int(self.finished_epochs * self.params['steps'])
         mlflow.log_metrics(data_aquisition_dict, step=current_step)
-        self.acquisition_steps = self.acquisition_steps + 1
+        self.acquisition_steps = total_acquisition_steps
 
 
     def _save_model(self, name: str):
