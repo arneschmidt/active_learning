@@ -50,7 +50,7 @@ class Model:
         total_acquisition_steps = int(self.config["data"]["active_learning"]["acquisition"]["total_steps"])
         for acquisition_step in range(total_acquisition_steps):
             self.n_training_points = data_gen.get_number_of_training_points()
-            mlflow_callback.data_acquisition_logging(total_acquisition_steps, data_gen.get_labeling_statistics())
+            mlflow_callback.data_acquisition_logging(acquisition_step, data_gen.get_labeling_statistics())
             # Optional: class-weighting based on groundtruth and estimated labels
             if self.config["model"]["class_weighted_loss"]:
                 class_weights = self._calculate_class_weights(data_gen.train_df)
