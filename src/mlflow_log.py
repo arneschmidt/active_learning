@@ -40,6 +40,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         super().__init__()
         self.finished_epochs = 0
         self.acquisition_steps = 0
+        self.acquisition_step_metric = {}
         self.best_result = 0.0
         self.best_result_epoch = 0
         self.best_weights = None
@@ -49,11 +50,12 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         self.params['steps'] = 0
 
     def on_batch_end(self, batch: int, logs=None):
-        if batch % 100 == 0:
-            current_step = int((self.finished_epochs * self.params['steps']) + batch)
-            # metrics_dict = format_metrics_for_mlflow(logs.copy())
-            metrics_dict = logs.copy()
-            mlflow.log_metrics(metrics_dict, step=current_step)
+        pass
+        # if batch % 100 == 0:
+        #     current_step = int((self.finished_epochs * self.params['steps']) + batch)
+        #     # metrics_dict = format_metrics_for_mlflow(logs.copy())
+        #     metrics_dict = logs.copy()
+        #     mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
         self.finished_epochs = self.finished_epochs + 1
@@ -77,14 +79,15 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
                 mlflow.log_metric("saved_model_epoch", self.finished_epochs)
             else:
                 patience = self.config['data']['active_learning']['acquisition']['after_epochs_of_no_improvement']
-                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.7:
+                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.9:
                     self.model.stop_training = True
+                    self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
+                    self.best_result = 0.0
 
-    def data_acquisition_logging(self, total_acquisition_steps, data_aquisition_dict):
+    def data_acquisition_logging(self, acquisition_step, data_aquisition_dict):
         current_step = int(self.finished_epochs * self.params['steps'])
         mlflow.log_metrics(data_aquisition_dict, step=current_step)
-        self.acquisition_steps = total_acquisition_steps
-
+        self.acquisition_steps = acquisition_step
 
     def _save_model(self, name: str):
         save_dir = os.path.join(self.config["output_dir"], "models/" + name)
