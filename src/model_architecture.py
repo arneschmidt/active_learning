@@ -162,7 +162,7 @@ def create_head(config: Dict, num_classes: int, num_training_points: int):
                 jitter=10e-3,
                 convert_to_tensor_fn=tensor_fn,
                 variational_inducing_observations_scale_initializer=tf.initializers.constant(
-                    0.01 * np.tile(np.eye(num_inducing_points, num_inducing_points), (num_classes, 1, 1))),
+                    0.001 * np.tile(np.eye(num_inducing_points, num_inducing_points), (num_classes, 1, 1))),
 
                 # unconstrained_observation_noise_variance_initializer=(
                 #     tf.constant_initializer(np.array(0.54).astype(np.float32))),
@@ -210,7 +210,7 @@ class RBFKernelFn(tf.keras.layers.Layer):
             name='amplitude')
 
         self._length_scale = self.add_variable(
-            initializer=tf.constant_initializer(0),
+            initializer=tf.constant_initializer(-2),
             dtype=dtype,
             name='length_scale')
 
@@ -222,6 +222,6 @@ class RBFKernelFn(tf.keras.layers.Layer):
     @property
     def kernel(self):
         return tfp.math.psd_kernels.ExponentiatedQuadratic(
-            amplitude=tf.nn.softplus(1.0 * self._amplitude), # 0.1
-            length_scale=tf.nn.softplus(1.0 * self._length_scale) # 5.
+            amplitude=1.0, #tf.nn.softplus(self._amplitude), # 0.1
+            length_scale=0.1 #tf.nn.softplus(self._length_scale) # 5.
         )

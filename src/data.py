@@ -31,23 +31,22 @@ class DataGenerator():
     def get_number_of_training_points(self):
         return int(np.sum(self.train_df['labeled']))
 
-    def query_from_oracle(self, train_indices):
+    def query_from_oracle(self, selected_wsis, train_indices ):
+        self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']])
         self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])])
 
     def _load_dataframes(self):
-        wsi_df = pd.read_csv(os.path.join(self.config['data']["dir"], "wsi_labels.csv"))
+        wsi_df = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "wsi_labels.csv"))
         wsi_df = extract_wsi_df_info(wsi_df)
         self.wsi_df = wsi_df
-        if self.config['model']['mode'] == 'train':
+        if self.config['model']['mode'] != 'test':
             train_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "train_patches.csv"))
             self.train_df = extract_df_info(train_df_raw, self.wsi_df, self.config['data'], split='train')
-            val_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "val_patches.csv"))
-            self.val_df = extract_df_info(val_df_raw, self.wsi_df, self.config['data'], split='val')
-        else:
-            val_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "val_patches.csv"))
-            self.val_df = extract_df_info(val_df_raw, self.wsi_df, self.config['data'], split='val')
+        val_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "val_patches.csv"))
+        self.val_df = extract_df_info(val_df_raw, self.wsi_df, self.config['data'], split='val')
+        if self.config['model']['mode'] != 'train' or self.config['logging']['test_on_the_fly']:
             test_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "test_patches.csv"))
             self.test_df = extract_df_info(test_df_raw, self.wsi_df, self.config['data'], split='test')
 
@@ -57,7 +56,7 @@ class DataGenerator():
         if self.config['model']['mode'] == 'train' and self.config['data']['supervision'] == 'active_learning':
             self.train_df['labeled'] = False
             ids = get_start_label_ids(self.train_df, self.wsi_df, self.config['data'])
-            self.train_df['labeled'][ids] = True
+            self.train_df['labeled'].loc[ids] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']],
                                                                           shuffle=True)
         self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])])

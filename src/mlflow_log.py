@@ -36,7 +36,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
     """
     Object that is used in the keras training procedure to log metrics at the end of an batch/epoch while training.
     """
-    def __init__(self, config, metric_calculator):
+    def __init__(self, config, metric_calculator_val, metric_calculator_test = None):
         super().__init__()
         self.finished_epochs = 0
         self.acquisition_steps = 0
@@ -45,7 +45,8 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         self.best_result_epoch = 0
         self.best_weights = None
         self.config = config
-        self.metric_calculator = metric_calculator
+        self.metric_calculator_val = metric_calculator_val
+        self.metric_calculator_test = metric_calculator_test
         self.params = {}
         self.params['steps'] = 0
 
@@ -58,28 +59,36 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         #     mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
+        current_step = int(self.finished_epochs * self.params['steps'])
         self.finished_epochs = self.finished_epochs + 1
-
+        metrics_dict = logs.copy()
+        mlflow.log_metrics(metrics_dict, step=current_step)
         metrics_for_monitoring = self.config['model']['metrics_for_monitoring']
 
-        if self.finished_epochs % self.config['logging']['val_log_epoch_interval'] == 0:
-            metrics_dict, _ = self.metric_calculator.calc_metrics()
-            current_step = int(self.finished_epochs * self.params['steps'])
+        # If logging interval rached, calculate validation metrics
+        if self.finished_epochs % self.config['logging']['interval'] == 0:
+            metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='val')
             mlflow.log_metrics(metrics_dict, step=current_step)
             mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
             mlflow.log_metric('acquisition_steps', self.acquisition_steps, step=current_step)
+
+            # If new best result, save model and set best epoch
             if metrics_dict[metrics_for_monitoring] > self.best_result:
                 self.best_result_epoch = self.finished_epochs
-                print("\n New best model! Saving model..")
                 self.best_result = metrics_dict[metrics_for_monitoring]
                 self.best_weights = self.model.get_weights()
                 if self.config["model"]["save_model"]:
+                    print("\n New best model! Saving model..")
                     self._save_model('acquisition_' + str(self.acquisition_steps))
                 mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring])
                 mlflow.log_metric("saved_model_epoch", self.finished_epochs)
+            # If not, check if model has converged
             else:
                 patience = self.config['data']['active_learning']['acquisition']['after_epochs_of_no_improvement']
                 if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.9:
+                    self.model.set_weights(self.best_weights)
+                    metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='test')
+                    mlflow.log_metrics(metrics_dict, step=current_step)
                     self.model.stop_training = True
                     self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
                     self.best_result = 0.0

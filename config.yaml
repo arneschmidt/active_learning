@@ -1,7 +1,7 @@
 # This is the main config. Parameters are updated and possibly overwritten by dataset dependent configs.
 model:
   mode: train # "train", "test", "predict", "predict_features"
-  batch_size: 16
+  batch_size: 8
   epochs: 20
   learning_rate: 0.1
   optimizer: sgd
@@ -11,7 +11,7 @@ model:
   metrics_wsi_level: True
   metrics_for_monitoring: val_f1_mean
   load_model: None # 'None' or path to experiment folder which containes 'models' directory with .h5 files
-  save_model: True # True or False
+  save_model: False # True or False
   feature_extractor:
     type: efficientnetb5 # "fsconv", "simple_cnn", "mobilenetv2", "resnet50", "efficientnetb0", "efficientnetb1", "eff.."
     global_max_pooling: False
@@ -24,7 +24,7 @@ model:
       number_hidden_units: 0 # feature dimension of hidden layer, set to 0 to skip this layer
     gp:
       inducing_points: 200
-      kl_weights: [0.000001, 0.00001, 0.0001, 0.001, 0.01, 0.1, 1.0]
+      kl_weights: [0.00001, 0.0001, 0.001, 0.01, 0.1, 1.0]
     bnn:
       number_hidden_units: 100
       kl_loss_factor: 1
@@ -44,11 +44,12 @@ data:
       strategy: 'max_var'
       wsis: 5
       labels_per_wsi: 10
-      after_epochs_of_no_improvement: 15
+      after_epochs_of_no_improvement: 10
       total_steps: 20
 
 logging:
   log_artifacts: False
-  val_log_epoch_interval: 5
+  interval: 5
+  test_on_the_fly: True
   run_name: efficientnetb1
   tracking_url: /home/arne/projects/mlruns

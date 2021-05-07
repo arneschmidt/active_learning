@@ -38,9 +38,8 @@ class Model:
         :param data_gen: data generator object to provide the image data generators and dataframes
         """
         # initialize callback for training procedure: logging and metrics calculation at the end of each epoch
-        metric_calculator = MetricCalculator(self.model, data_gen, self.config, mode='val')
+        metric_calculator = MetricCalculator(self.model, data_gen, self.config)
         mlflow_callback = MLFlowCallback(self.config, metric_calculator)
-        patience = int(self.config['data']['active_learning']['acquisition']['labels_per_wsi'])
         callbacks = [mlflow_callback]
 
         # initialize generators with weak and strong augmentation
@@ -68,16 +67,18 @@ class Model:
                         callbacks=callbacks,
                     )
                     success = True
-                except:
+                except Exception as e:
+                    print('Exception: ', e)
                     print('Failure in training, try again')
                     self.model.set_weights(mlflow_callback.best_weights)
+                    mlflow_callback.finished_epochs = mlflow_callback.best_result_epoch
                     success = False
                 if success:
                     break
 
             uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
-            train_indices = self.select_data_for_labeling(uncertainties_of_unlabeled, data_gen)
-            data_gen.query_from_oracle(train_indices)
+            selected_wsis, train_indices = self.select_data_for_labeling(uncertainties_of_unlabeled, data_gen)
+            data_gen.query_from_oracle(selected_wsis, train_indices)
 
     def test(self, data_gen: DataGenerator):
         """
@@ -188,8 +189,8 @@ class Model:
         if ids.size != wsis_per_acquisition*labels_per_wsi:
             print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
             print('Requested labels: ', ids.size)
-            raise Warning('Not enough labels obtained!')
-        return ids
+            print('Not enough labels obtained!')
+        return selected_wsis, ids
 
     def _calculate_class_weights(self, train_df: pd.DataFrame):
         """

@@ -75,9 +75,9 @@ def set_wsi_labels_pc(dataframe, wsi_dataframe):
         id_bool = dataframe['wsi']==wsi_dataframe['slide_id'][row]
         if np.any(id_bool) == False:
             continue
-        dataframe['wsi_index'][id_bool] = row
-        dataframe['wsi_primary_label'][id_bool] = np.max([int(wsi_dataframe['Gleason_primary'][row]) - 2, 0])
-        dataframe['wsi_secondary_label'][id_bool] = np.max([int(wsi_dataframe['Gleason_secondary'][row]) - 2, 0])
+        dataframe['wsi_index'].iloc[id_bool] = row
+        dataframe['wsi_primary_label'].iloc[id_bool] = np.max([int(wsi_dataframe['Gleason_primary'][row]) - 2, 0])
+        dataframe['wsi_secondary_label'].iloc[id_bool] = np.max([int(wsi_dataframe['Gleason_secondary'][row]) - 2, 0])
     assert(np.all(dataframe['wsi_index'] != -1))
     assert(np.all(dataframe['wsi_primary_label'] != -1))
     assert(np.all(dataframe['wsi_secondary_label'] != -1))
