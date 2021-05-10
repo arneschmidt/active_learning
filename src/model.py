@@ -62,7 +62,7 @@ class Model:
                     mlflow_callback.model_converged = False
                     self.model.fit(
                         data_gen.train_generator_labeled,
-                        epochs=200,
+                        epochs=400,
                         class_weight=class_weights,
                         steps_per_epoch=steps,
                         callbacks=callbacks,
@@ -77,6 +77,7 @@ class Model:
                 if success:
                     break
             if not mlflow_callback.model_converged:
+                print('\nModel did not converge! Stopping..')
                 break
 
             uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)

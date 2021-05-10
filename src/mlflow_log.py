@@ -96,7 +96,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
             # If not, check if model has converged
             else:
                 patience = self.config['data']['active_learning']['acquisition']['after_epochs_of_no_improvement']
-                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.9:
+                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.8:
                     self.model.set_weights(self.best_weights)
                     metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='test')
                     mlflow.log_metrics(metrics_dict, step=current_step)
