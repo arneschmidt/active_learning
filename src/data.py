@@ -136,5 +136,10 @@ class DataGenerator():
     def get_labeling_statistics(self):
         out_dict = {}
         out_dict['labeled_wsis'] = np.sum(self.wsi_df['labeled'])
-        out_dict['labeled_patches'] = np.sum(self.train_df['labeled'])
+        labeled_df = self.train_df[self.train_df['labeled']]
+        out_dict['labeled_patches'] = len(labeled_df)
+        out_dict['labeled_patches_NC'] = np.sum(labeled_df['class'] == '0')
+        out_dict['labeled_patches_GG3'] = np.sum(labeled_df['class'] == '1')
+        out_dict['labeled_patches_GG4'] = np.sum(labeled_df['class'] == '2')
+        out_dict['labeled_patches_GG5'] = np.sum(labeled_df['class'] == '3')
         return out_dict

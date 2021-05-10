@@ -54,7 +54,7 @@ class Model:
             if self.config["model"]["class_weighted_loss"]:
                 class_weights = self._calculate_class_weights(data_gen.train_df)
 
-            steps = np.ceil(self.n_training_points / self.batch_size)
+            steps = np.ceil(data_gen.get_number_of_training_points() / self.batch_size)
             self._set_kl_weight(acquisition_step)
 
             for i in range(5):
@@ -75,6 +75,8 @@ class Model:
                     success = False
                 if success:
                     break
+            if not mlflow_callback.model_converged:
+                break
 
             uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
             selected_wsis, train_indices = self.select_data_for_labeling(uncertainties_of_unlabeled, data_gen)

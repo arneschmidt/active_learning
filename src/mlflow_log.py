@@ -2,6 +2,7 @@ from typing import Dict
 import mlflow
 import tensorflow
 import os
+import copy
 import numpy as np
 
 class MLFlowLogger:
@@ -15,12 +16,21 @@ class MLFlowLogger:
         self.config = config
 
     def config_logging(self):
-        mlflow.log_params(self.config['model'])
-        mlflow.log_params(self.config['model']['feature_extractor'])
-        mlflow.log_params(self.config['data'])
-        head_type = self.config['model']['head']['type']
-        mlflow.log_param('head_type', head_type)
-        mlflow.log_params(self.config['model']['head'][head_type])
+        config = copy.deepcopy(self.config)
+        fe_config = config['model'].pop("feature_extractor")
+        log_fe_config = {}
+        for key in fe_config:
+            log_fe_config['fe_' + key] = fe_config[key]
+
+        head_config = config['model'].pop("head")
+        log_head_config = {}
+        for key in head_config:
+            log_head_config['head_' + key] = head_config[key]
+
+        mlflow.log_params(log_fe_config)
+        mlflow.log_params(log_head_config)
+        mlflow.log_params(config['model'])
+        mlflow.log_params(config['data'])
 
     def data_logging(self, data_dict):
         mlflow.log_params(data_dict)
@@ -49,6 +59,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         self.metric_calculator_test = metric_calculator_test
         self.params = {}
         self.params['steps'] = 0
+        self.model_converged = False
 
     def on_batch_end(self, batch: int, logs=None):
         pass
@@ -59,6 +70,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         #     mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
+        self.model_converged = False
         current_step = int(self.finished_epochs * self.params['steps'])
         self.finished_epochs = self.finished_epochs + 1
         metrics_dict = logs.copy()
@@ -92,6 +104,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
                     self.model.stop_training = True
                     self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
                     self.best_result = 0.0
+                    self.model_converged = True
 
     def data_acquisition_logging(self, acquisition_step, data_aquisition_dict):
         current_step = int(self.finished_epochs * self.params['steps'])
