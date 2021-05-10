@@ -70,7 +70,6 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         #     mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
-        self.model_converged = False
         current_step = int(self.finished_epochs * self.params['steps'])
         self.finished_epochs = self.finished_epochs + 1
         metrics_dict = logs.copy()
@@ -101,10 +100,11 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
                     self.model.set_weights(self.best_weights)
                     metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='test')
                     mlflow.log_metrics(metrics_dict, step=current_step)
-                    self.model.stop_training = True
                     self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
                     self.best_result = 0.0
                     self.model_converged = True
+                    self.model.stop_training = True
+
 
     def data_acquisition_logging(self, acquisition_step, data_aquisition_dict):
         current_step = int(self.finished_epochs * self.params['steps'])

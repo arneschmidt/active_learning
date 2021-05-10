@@ -59,6 +59,7 @@ class Model:
 
             for i in range(5):
                 try:
+                    mlflow_callback.model_converged = False
                     self.model.fit(
                         data_gen.train_generator_labeled,
                         epochs=200,
@@ -88,7 +89,7 @@ class Model:
         :param data_gen: data generator object to provide the image data generators and dataframes
         :return: dict of metrics from testing
         """
-        metric_calculator = MetricCalculator(self.model, data_gen, self.config, mode='test')
+        metric_calculator = MetricCalculator(self.model, data_gen, self.config)
         metrics, artifacts = metric_calculator.calc_metrics()
         save_metrics_artifacts(artifacts, self.config['output_dir'])
         return metrics
