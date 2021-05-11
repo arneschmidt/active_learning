@@ -51,7 +51,7 @@ def get_start_label_ids(dataframe, wsi_dataframe, data_config):
                                             size=number_labels,
                                             replace=False)
         else:
-            df_selection = dataframe[dataframe['wsi'] == wsi_selection[0]]
+            df_selection = dataframe['index'].loc[dataframe['wsi'] == wsi_selection[0]]
         sampled_indices = np.concatenate([sampled_indices, df_selection])
     return sampled_indices
 #
