@@ -46,7 +46,11 @@ class Model:
         class_weights = None
 
         # acquisition loop
-        total_acquisition_steps = int(self.config["data"]["active_learning"]["acquisition"]["total_steps"])
+        if self.config['data']['supervision'] == 'active_learning':
+            total_acquisition_steps = int(self.config["data"]["active_learning"]["acquisition"]["total_steps"])
+        else:
+            total_acquisition_steps = 1
+
         for acquisition_step in range(total_acquisition_steps):
             self.n_training_points = data_gen.get_number_of_training_points()
             mlflow_callback.data_acquisition_logging(acquisition_step, data_gen.get_labeling_statistics())
@@ -62,7 +66,7 @@ class Model:
                     mlflow_callback.model_converged = False
                     self.model.fit(
                         data_gen.train_generator_labeled,
-                        epochs=400,
+                        epochs=self.config['model']['epochs'],
                         class_weight=class_weights,
                         steps_per_epoch=steps,
                         callbacks=callbacks,
@@ -78,11 +82,10 @@ class Model:
                     break
             if not mlflow_callback.model_converged:
                 print('\nModel did not converge! Stopping..')
-                break
-
-            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
-            selected_wsis, train_indices = self.select_data_for_labeling(uncertainties_of_unlabeled, data_gen)
-            data_gen.query_from_oracle(selected_wsis, train_indices)
+                # break
+            if self.config['data']['supervision'] == 'active_learning':
+                selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
+                data_gen.query_from_oracle(selected_wsis, train_indices)
 
     def test(self, data_gen: DataGenerator):
         """
@@ -160,34 +163,52 @@ class Model:
                 np.sum(np.multiply(prediction_samples, np.log(prediction_samples)), axis=-1), axis=0)
         return uncertainty
 
-    def select_data_for_labeling(self, uncertainties: np.array, data_gen: DataGenerator):
+    def select_data_for_labeling(self, data_gen: DataGenerator):
         print('Select data to be labeled..')
         dataframe = data_gen.train_df.loc[np.logical_not(data_gen.train_df['labeled'])]
         wsi_dataframe = data_gen.wsi_df
 
+        strategy = self.config['data']['active_learning']['acquisition']['strategy']
+        wsi_selection = self.config['data']['active_learning']['acquisition']['wsi_selection']
         wsis_per_acquisition = self.config['data']['active_learning']['acquisition']['wsis']
         labels_per_wsi = self.config['data']['active_learning']['acquisition']['labels_per_wsi']
-        sorted_rows = np.argsort(uncertainties)[::-1]
-        selected_wsis = []
-        already_labeled_wsi = wsi_dataframe['slide_id'].loc[wsi_dataframe['labeled']]
-        # get the WSIs with the highest uncertainties
-        for row in sorted_rows:
-            wsi_name = dataframe['wsi'].iloc[[row]].values[0]
-            if wsi_name not in selected_wsis and not np.any(already_labeled_wsi.str.contains(wsi_name)):
-                selected_wsis.append(wsi_name)
-            if len(selected_wsis) >= wsis_per_acquisition:
-                break
-        selected_wsis = np.array(selected_wsis)
+
+        if strategy != 'random':
+            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
+            sorted_rows = np.argsort(uncertainties_of_unlabeled)[::-1]
+            if wsi_selection != 'random':
+                raise Exception('Please set wsi_selection to random when using strategy = random')
+
+        if wsi_selection != 'random':
+            already_labeled_wsi = wsi_dataframe['slide_id'].loc[wsi_dataframe['labeled']]
+
+            selected_wsis = []
+            # get the WSIs with the highest uncertainties
+            for row in sorted_rows:
+                wsi_name = dataframe['wsi'].iloc[[row]].values[0]
+                if wsi_name not in selected_wsis and not np.any(already_labeled_wsi.str.contains(wsi_name)):
+                    selected_wsis.append(wsi_name)
+                if len(selected_wsis) >= wsis_per_acquisition:
+                    break
+            selected_wsis = np.array(selected_wsis)
+        else:
+            unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                          wsi_dataframe['Partition'] == 'train')]
+            selected_wsis = np.random.choice(unlabeled_wsis, size=wsis_per_acquisition, replace=False)
 
         # get the highest uncertainties of the selected WSIs
         ids = np.array([])
         for wsi in selected_wsis:
             wsi_rows = np.array([])
-            for row in sorted_rows:
-                if dataframe['wsi'].iloc[row] == wsi:
-                    wsi_rows = np.concatenate([row, wsi_rows], axis=None)
-                if wsi_rows.size >= labels_per_wsi:
-                    break
+            if strategy != 'random':
+                for row in sorted_rows:
+                    if dataframe['wsi'].iloc[row] == wsi:
+                        wsi_rows = np.concatenate([row, wsi_rows], axis=None)
+                    if wsi_rows.size >= labels_per_wsi:
+                        break
+            else:
+                candidates = dataframe['index'].loc[dataframe['wsi']==wsi]
+                wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
             wsi_ids = dataframe['index'].iloc[wsi_rows].values[:]
             ids = np.concatenate([ids, wsi_ids], axis=None)
         if ids.size != wsis_per_acquisition*labels_per_wsi:
@@ -229,7 +250,7 @@ class Model:
         if self.config['model']['loss_function'] == 'focal_loss':
             loss = tfa.losses.SigmoidFocalCrossEntropy()
         else:
-            loss = 'categorical_crossentropy'
+            loss = tf.keras.losses.CategoricalCrossentropy(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
 
 
         self.model.compile(optimizer=optimizer,
@@ -247,7 +268,7 @@ class Model:
             kl_weight = kl_weights[-1]
         else:
             kl_weight = kl_weights[acquisition_step]
-        weight = tf.cast(kl_weight * self.batch_size / self.n_training_points, tf.float32)
+        weight = tf.cast(kl_weight/ self.n_training_points, tf.float32)
 
         self.model.layers[1].variables[7].assign(weight)
 

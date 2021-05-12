@@ -57,9 +57,11 @@ class DataGenerator():
             self.train_df['labeled'] = False
             ids = get_start_label_ids(self.train_df, self.wsi_df, self.config['data'])
             self.train_df['labeled'].loc[ids] = True
+            self.train_generator_unlabeled = self.data_generator_from_dataframe(
+                self.train_df.loc[np.logical_not(self.train_df['labeled'])])
+
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']],
                                                                           shuffle=True)
-        self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])])
         self.validation_generator = self.data_generator_from_dataframe(self.val_df, image_augmentation=False, shuffle=False)
         self.test_generator = self.data_generator_from_dataframe(self.test_df, image_augmentation=False, shuffle=False)
 

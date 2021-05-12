@@ -150,7 +150,8 @@ def create_head(config: Dict, num_classes: int, num_training_points: int):
             tensor_fn = tfp.distributions.Distribution.sample
         if features < 1:
             raise Exception('Please set the num_output_features > 0 when using Gaussian processes.')
-        kernel = RBFKernelFn(amplitude=config["model"]["head"]["gp"]["kernel_amplitude"],
+        kernel = RBFKernelFn(trainable=config["model"]["head"]["gp"]["kernel_trainable"],
+                            amplitude=config["model"]["head"]["gp"]["kernel_amplitude"],
                              length_scale=config["model"]["head"]["gp"]["kernel_length_scale"])
         head = tf.keras.Sequential([
             tf.keras.layers.Input(shape=[features]), #, batch_size=config["model"]["batch_size"]),
@@ -210,12 +211,10 @@ class RBFKernelFn(tf.keras.layers.Layer):
         self._length_scale_var = self.add_variable(
             initializer=tf.constant_initializer(0.0),
             name='length_scale')
-        if trainable:
-            self._amplitude = tf.nn.softplus(0.1 * self._amplitude_var)
-            self._length_scale = tf.nn.softplus(0.1 * self._length_scale_var)
-        else:
-            self._amplitude = amplitude
-            self._length_scale = length_scale
+        self.trainable = trainable
+        self.fixed_ls = length_scale
+        self.fixed_ampl = amplitude
+
 
     def call(self, x):
         # Never called -- this is just a layer so it can hold variables
@@ -224,7 +223,14 @@ class RBFKernelFn(tf.keras.layers.Layer):
 
     @property
     def kernel(self):
+        if self.trainable:
+            amplitude = tf.nn.softplus(1.0 * self._amplitude_var)
+            length_scale = tf.nn.softplus(1.0 * self._length_scale_var)
+        else:
+            amplitude = self.fixed_ampl
+            length_scale = self.fixed_ls
+
         return tfp.math.psd_kernels.ExponentiatedQuadratic(
-            amplitude= self._amplitude ,# tf.nn.softplus(0.1 * self._amplitude), # 0.1
-            length_scale= self._length_scale #tf.nn.softplus(10.0 * self._length_scale) # 5.
+            amplitude= amplitude ,# tf.nn.softplus(0.1 * self._amplitude), # 0.1
+            length_scale= length_scale #tf.nn.softplus(10.0 * self._length_scale) # 5.
         )
