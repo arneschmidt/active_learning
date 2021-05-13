@@ -47,8 +47,6 @@ def config_update(orig_dict, new_dict):
         if isinstance(val, collections.Mapping):
             tmp = config_update(orig_dict.get(key, { }), val)
             orig_dict[key] = tmp
-        elif isinstance(val, list):
-            orig_dict[key] = (orig_dict.get(key, []) + val)
         else:
             orig_dict[key] = new_dict[key]
     return orig_dict
@@ -80,8 +78,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = load_configs(args)
 
+    if config['logging']['run_name'] == 'auto':
+        config['logging']['run_name'] = os.path.split(args.experiment_config)[-2]
+
+
     print('Create output folder')
     config['output_dir'] = os.path.join(config['data']['artifact_dir'], config['logging']['run_name'])
     os.makedirs(config['output_dir'], exist_ok=True)
     print('Output will be written to: ', config['output_dir'])
+
     main(config)

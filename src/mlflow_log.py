@@ -72,7 +72,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
     def on_epoch_end(self, epoch: int, logs=None):
         current_step = int(self.finished_epochs * self.params['steps'])
         self.finished_epochs = self.finished_epochs + 1
-        metrics_dict = logs.copy()
+        metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
         metrics_for_monitoring = self.config['model']['metrics_for_monitoring']
 
@@ -96,7 +96,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
             # If not, check if model has converged
             else:
                 patience = self.config['data']['active_learning']['acquisition']['after_epochs_of_no_improvement']
-                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > 0.9:
+                if patience < self.finished_epochs - self.best_result_epoch: # and logs['accuracy'] > 0.9:
                     self.model.set_weights(self.best_weights)
                     if self.config['logging']['test_on_the_fly']:
                         metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='test')

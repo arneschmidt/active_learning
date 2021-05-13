@@ -259,8 +259,8 @@ class Model:
                            metrics=['accuracy',
                                     tf.keras.metrics.Precision(),
                                     tf.keras.metrics.Recall(),
-                                    # tfa.metrics.F1Score(num_classes=self.num_classes),
-                                    # tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
+                                    tfa.metrics.F1Score(num_classes=self.num_classes),
+                                    tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
                                     ])
 
     def _set_kl_weight(self, acquisition_step):
