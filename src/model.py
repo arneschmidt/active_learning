@@ -59,7 +59,8 @@ class Model:
                 class_weights = self._calculate_class_weights(data_gen.train_df)
 
             steps = np.ceil(data_gen.get_number_of_training_points() / self.batch_size)
-            self._set_kl_weight(acquisition_step)
+            if self.config["model"]['head']['type'] == 'gp':
+                self._set_kl_weight(acquisition_step)
 
             for i in range(5):
                 try:
