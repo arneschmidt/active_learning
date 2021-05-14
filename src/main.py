@@ -79,7 +79,7 @@ if __name__ == "__main__":
     config = load_configs(args)
 
     if config['logging']['run_name'] == 'auto':
-        config['logging']['run_name'] = os.path.split(args.experiment_config)[-2]
+        config['logging']['run_name'] = args.experiment_config.split('/')[-2]
 
 
     print('Create output folder')
