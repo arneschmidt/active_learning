@@ -177,10 +177,11 @@ class Model:
         if strategy != 'random':
             uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
             sorted_rows = np.argsort(uncertainties_of_unlabeled)[::-1]
+        else:
             if wsi_selection != 'random':
                 raise Exception('Please set wsi_selection to random when using strategy = random')
 
-        if wsi_selection != 'random':
+        if wsi_selection == 'uncertainty_max':
             already_labeled_wsi = wsi_dataframe['slide_id'].loc[wsi_dataframe['labeled']]
 
             selected_wsis = []
@@ -192,6 +193,15 @@ class Model:
                 if len(selected_wsis) >= wsis_per_acquisition:
                     break
             selected_wsis = np.array(selected_wsis)
+        elif wsi_selection == 'uncertainty_mean':
+            unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                          wsi_dataframe['Partition'] == 'train')])
+            mean_uncertainties= np.zeros_like(unlabeled_wsis)
+            for i in range(len(unlabeled_wsis)):
+                rows = dataframe['wsi'] == unlabeled_wsis[i]
+                mean_uncertainties[i] = np.mean(uncertainties_of_unlabeled[rows])
+            sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
+            selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
         else:
             unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
                                                                           wsi_dataframe['Partition'] == 'train')]
