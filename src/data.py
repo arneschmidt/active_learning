@@ -34,7 +34,7 @@ class DataGenerator():
     def query_from_oracle(self, selected_wsis, train_indices ):
         self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
         self.train_df['labeled'].loc[train_indices] = True
-        self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']])
+        self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)
         self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])])
 
     def _load_dataframes(self):
