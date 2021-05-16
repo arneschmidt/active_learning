@@ -218,7 +218,7 @@ class Model:
                     if wsi_rows.size >= labels_per_wsi:
                         break
             else:
-                candidates = dataframe['index'].loc[dataframe['wsi']==wsi]
+                candidates = np.squeeze(np.argwhere(np.array(dataframe['wsi']==wsi)))
                 wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
             wsi_ids = dataframe['index'].iloc[wsi_rows].values[:]
             ids = np.concatenate([ids, wsi_ids], axis=None)
