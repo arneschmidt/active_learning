@@ -35,7 +35,8 @@ class DataGenerator():
         self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)
-        self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])])
+        self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])],
+                                                                            image_augmentation=False)
 
     def _load_dataframes(self):
         wsi_df = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "wsi_labels.csv"))
@@ -58,7 +59,7 @@ class DataGenerator():
             ids = get_start_label_ids(self.train_df, self.wsi_df, self.config['data'])
             self.train_df['labeled'].loc[ids] = True
             self.train_generator_unlabeled = self.data_generator_from_dataframe(
-                self.train_df.loc[np.logical_not(self.train_df['labeled'])])
+                self.train_df.loc[np.logical_not(self.train_df['labeled'])], image_augmentation=False)
 
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']],
                                                                           shuffle=True)
