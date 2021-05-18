@@ -18,7 +18,7 @@ model:
     num_output_features: 8 # feature dimension of feature extractor output, set to 0 to skip this layer
     output_activation: sigmoid # sigmoid, relu
   head:
-    type: gp # deterministic, gp, bnn
+    type: deterministic # deterministic, gp, bnn
     deterministic:
       dropout: 0.2
       number_hidden_units: 0 # feature dimension of hidden layer, set to 0 to skip this layer
@@ -44,7 +44,7 @@ data:
       wsis_per_class: 1
       labels_per_class_and_wsi: 10 # -1 (all) or number of labels per wsi
     acquisition:
-      strategy: entropy # 'max_var', 'bald', 'entropy' or 'random'
+      strategy: var_ratio # 'max_var', 'bald', 'entropy', 'random', 'var_ratio'
       wsis: 5
       wsi_selection: uncertainty_mean # 'random', 'uncertainty_max' or 'uncertainty_mean'
       labels_per_wsi: 10
