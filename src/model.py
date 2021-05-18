@@ -131,37 +131,58 @@ class Model:
 
     def predict_uncertainties(self, generator):
         print('Predict uncertainties..')
-        number_of_samples = 10
-        feature_extractor = self.model.layers[0]
-        cnn_out = feature_extractor.predict(generator, verbose=True)
-        vgp = self.model.layers[1].layers[0]
-        uncertainties = np.array([])
-        batch_size = 128
-        steps = int(np.ceil(len(cnn_out) / 128))
-        for step in range(steps):
-            start = step * batch_size
-            stop = (step + 1) * batch_size
-            if stop > len(cnn_out):
-                stop = len(cnn_out)
-            pred = tf.nn.softmax(vgp(cnn_out[start:stop]).sample(number_of_samples))
-            uncertainty = self.uncertainty_calculation(pred)
-            uncertainties = np.concatenate((uncertainties, uncertainty))
-        uncertainties = np.array(uncertainties)
+        if self.config['model']['head']['type'] == 'gp':
+            number_of_samples = 10
+            feature_extractor = self.model.layers[0]
+            cnn_out = feature_extractor.predict(generator, verbose=True)
+            vgp = self.model.layers[1].layers[0]
+            uncertainties = np.array([])
+            batch_size = 128
+            steps = int(np.ceil(len(cnn_out) / 128))
+            for step in range(steps):
+                start = step * batch_size
+                stop = (step + 1) * batch_size
+                if stop > len(cnn_out):
+                    stop = len(cnn_out)
+                pred = tf.nn.softmax(vgp(cnn_out[start:stop]).sample(number_of_samples))
+                uncertainty = self.probabilistic_uncertainty_calculation(pred)
+                uncertainties = np.concatenate((uncertainties, uncertainty))
+            uncertainties = np.array(uncertainties)
+        elif self.config['model']['head']['type'] == 'deterministic':
+            predictions = self.model.predict(generator, verbose=True)
+            uncertainties = self.deterministic_uncertainty_calculation(predictions)
+
         assert uncertainties.size == generator.n
         return uncertainties
 
-    def uncertainty_calculation(self, prediction_samples):
+    def probabilistic_uncertainty_calculation(self, prediction_samples):
         acquisition_method = self.config['data']['active_learning']['acquisition']['strategy']
         if acquisition_method == 'max_var':
             uncertainty = np.mean(np.std(prediction_samples, axis=0), axis=-1)
         elif acquisition_method == 'entropy':
             mean = np.mean(prediction_samples, axis=0)
-            uncertainty = np.sum(- np.multiply(mean, np.log(mean)), axis=1)
+            uncertainty = - np.sum(np.multiply(mean, np.log(mean)), axis=1)
         elif acquisition_method == 'bald':
             mean = np.mean(prediction_samples, axis=0)
             entropy = np.sum(- np.multiply(mean, np.log(mean)), axis=1)
             uncertainty = entropy + np.mean(
                 np.sum(np.multiply(prediction_samples, np.log(prediction_samples)), axis=-1), axis=0)
+        elif acquisition_method == 'var_ratio':
+            mean = np.mean(prediction_samples, axis=0)
+            uncertainty = 1 - np.max(mean, axis=1)
+        return uncertainty
+
+    def deterministic_uncertainty_calculation(self, predictions):
+        acquisition_method = self.config['data']['active_learning']['acquisition']['strategy']
+        if acquisition_method == 'max_var':
+            raise Exception('Acquisition method "max_var" not supported for deterministic models.')
+        elif acquisition_method == 'entropy':
+            uncertainty = - np.sum(np.multiply(predictions, np.log(predictions)), axis=1)
+        elif acquisition_method == 'bald':
+            entropy = np.sum(- np.multiply(predictions, np.log(predictions)), axis=1)
+            uncertainty = entropy + np.sum(np.multiply(predictions, np.log(predictions)), axis=-1)
+        elif acquisition_method == 'var_ratio':
+            uncertainty = 1 - np.max(predictions, axis=1)
         return uncertainty
 
     def select_data_for_labeling(self, data_gen: DataGenerator):
