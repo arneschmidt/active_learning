@@ -77,6 +77,10 @@ def create_feature_extactor(config: Dict):
     else:
         raise Exception("Choose valid model architecture!")
 
+    dropout_rate = config["model"]["feature_extractor"]["dropout"]
+    if dropout_rate > 0.0:
+        feature_extractor.add(Dropout(rate=dropout_rate))
+
     if config["model"]["feature_extractor"]["global_max_pooling"]:
         feature_extractor.add(GlobalMaxPool2D())
     if config["model"]["feature_extractor"]["num_output_features"] > 0:
