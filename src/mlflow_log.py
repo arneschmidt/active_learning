@@ -48,7 +48,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
     """
     Object that is used in the keras training procedure to log metrics at the end of an batch/epoch while training.
     """
-    def __init__(self, config, metric_calculator_val, metric_calculator_test = None):
+    def __init__(self, config, metric_calculator):
         super().__init__()
         self.finished_epochs = 0
         self.acquisition_steps = 0
@@ -57,8 +57,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
         self.best_result_epoch = 0
         self.best_weights = None
         self.config = config
-        self.metric_calculator_val = metric_calculator_val
-        self.metric_calculator_test = metric_calculator_test
+        self.metric_calculator = metric_calculator
         self.params = {}
         self.params['steps'] = 0
         self.model_converged = False
@@ -81,7 +80,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
 
         # If logging interval rached, calculate validation metrics
         if self.finished_epochs % self.config['logging']['interval'] == 0:
-            metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='val')
+            metrics_dict, _ = self.metric_calculator.calc_metrics(mode='val')
             mlflow.log_metrics(metrics_dict, step=current_step)
             mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
             mlflow.log_metric('acquisition_steps', self.acquisition_steps, step=current_step)
@@ -102,8 +101,8 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
                 if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
                     self.model.set_weights(self.best_weights)
                     if self.config['logging']['test_on_the_fly']:
-                        metrics_dict, _ = self.metric_calculator_val.calc_metrics(mode='test')
-                        mlflow.log_metrics(metrics_dict, step=current_step)
+                        metrics_dict, _ = self.metric_calculator.calc_metrics(mode='test')
+                        mlflow.log_metrics(metrics_dict, step=self.acquisition_steps)
                     self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
                     self.best_result = 0.0
                     self.model_converged = True
