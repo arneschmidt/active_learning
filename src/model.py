@@ -300,7 +300,10 @@ class Model:
             kl_weight = kl_weights[-1]
         else:
             kl_weight = kl_weights[acquisition_step]
-        weight = tf.cast(kl_weight/ self.n_training_points, tf.float32)
+        if self.config['model']['head']['gp']['kl_decrease']:
+            weight = tf.cast(kl_weight/ self.n_training_points, tf.float32)
+        else:
+            weight = tf.cast(kl_weight, tf.float32)
 
         self.model.layers[1].variables[7].assign(weight)
 
