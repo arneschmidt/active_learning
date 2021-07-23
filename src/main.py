@@ -22,7 +22,7 @@ def main(config: Dict):
     data_gen = DataGenerator(config)
 
     print("Load classification model")
-    model = Model(config, data_gen.num_training_samples)
+    model = Model(config, data_gen.get_number_of_training_points())
 
     if config["model"]["mode"] == "train":
         print("Train")
@@ -47,8 +47,6 @@ def config_update(orig_dict, new_dict):
         if isinstance(val, collections.Mapping):
             tmp = config_update(orig_dict.get(key, { }), val)
             orig_dict[key] = tmp
-        elif isinstance(val, list):
-            orig_dict[key] = (orig_dict.get(key, []) + val)
         else:
             orig_dict[key] = new_dict[key]
     return orig_dict
@@ -79,6 +77,10 @@ if __name__ == "__main__":
                         help="Config path to experiment config. Parameters will override defaults. Optional.")
     args = parser.parse_args()
     config = load_configs(args)
+
+    if config['logging']['run_name'] == 'auto':
+        config['logging']['run_name'] = args.experiment_config.split('/')[-2]
+
 
     print('Create output folder')
     config['output_dir'] = os.path.join(config['data']['artifact_dir'], config['logging']['run_name'])

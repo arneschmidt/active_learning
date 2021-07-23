@@ -9,47 +9,48 @@ class MetricCalculator():
     """
     Object that takes care of the metric calculation for training and testing.
     """
-    def __init__(self, model, data_gen, config, mode):
+    def __init__(self, model, data_gen, config):
         self.model = model
         self.data_gen = data_gen
-        self.mode = mode
         self.dataset_type = config['data']['dataset_type']
         self.num_classes = config['data']['num_classes']
         self.metrics_patch_level = config['model']['metrics_patch_level']
         self.metrics_wsi_level = config['model']['metrics_wsi_level']
-        if mode == 'val':
-            self.val_gen = data_gen.validation_generator
-            self.val_df = data_gen.val_df
-            self.test_gen = self.val_gen
-            self.test_df = self.val_df
-        else:
-            self.val_gen = data_gen.validation_generator
-            self.val_df = data_gen.val_df
-            self.test_gen = data_gen.test_generator
-            self.test_df = data_gen.test_df
+        self.val_gen = data_gen.validation_generator # see how to avoid modes and use val and test gen
+        self.val_df = data_gen.val_df
+        self.test_gen = data_gen.test_generator
+        self.test_df = data_gen.test_df
 
-    def calc_metrics(self):
+    def calc_metrics(self, mode: str = 'val'):
         """
         Make predictions and calculate metrics.
         :return: metrics dict, artifacts dict
         """
-        print('\nCalculate metrics for ' + self.mode)
-        val_predictions, test_predictions = self.get_predictions()
+        print('\nCalculate metrics for ' + mode)
+        val_predictions = self.get_predictions(split = 'val')
+
+        if mode =='val':
+            test_predictions = val_predictions
+            test_dataframe = self.val_df
+        else:
+            test_predictions = self.get_predictions(split='test')
+            test_dataframe = self.test_df
+
         metrics = {}
         artifacts = {}
         if self.metrics_patch_level:
-            metrics.update(self.calc_patch_level_metrics(test_predictions))
+            metrics.update(self.calc_patch_level_metrics(test_predictions, test_dataframe))
         if self.metrics_wsi_level:
-            wsi_metrics, artifacts = self.calc_optimal_wsi_metrics(val_predictions, test_predictions)
+            wsi_metrics, artifacts = self.calc_optimal_wsi_metrics(val_predictions, test_predictions, test_dataframe)
             metrics.update(wsi_metrics)
-        metrics = self.add_prefix(metrics, self.mode)
+        metrics = self.add_prefix(metrics, mode)
         # for key in artifacts.keys():
-        #     artifacts[key] = self.add_prefix(artifacts[key], self.mode)
-        print('Metrics ' + self.mode)
+        #     artifacts[key] = self.add_prefix(artifacts[key], mode)
+        print('Metrics ' + mode)
         print(metrics)
         return metrics, artifacts
 
-    def get_predictions(self):
+    def get_predictions(self, split: str):
         """
         Obtain model predictions for validation and/or test data.
         :return: val_predictions, test_predictions
@@ -57,26 +58,22 @@ class MetricCalculator():
         model = self.model
         data_gen = self.data_gen
         batch_size = data_gen.validation_generator.batch_size
-        if self.mode == 'val':
+        if split == 'val':
             val_gen = self.val_gen
-            val_predictions = model.predict(val_gen, batch_size=batch_size, steps=np.ceil(val_gen.n / batch_size), verbose=1)
-            test_predictions = val_predictions
+            predictions = model.predict(val_gen, batch_size=batch_size, steps=np.ceil(val_gen.n / batch_size), verbose=1)
         else:
-            val_gen = self.val_gen
-            val_predictions = model.predict(val_gen, batch_size=batch_size,
-                                                    steps=np.ceil(val_gen.n / batch_size), verbose=1)
             test_gen = self.test_gen
-            test_predictions = model.predict(test_gen, batch_size=batch_size, steps=np.ceil(test_gen.n / batch_size), verbose=1)
+            predictions = model.predict(test_gen, batch_size=batch_size, steps=np.ceil(test_gen.n / batch_size), verbose=1)
 
-        return val_predictions, test_predictions
+        return predictions
 
-    def calc_patch_level_metrics(self, predictions_softmax: np.array):
+    def calc_patch_level_metrics(self, predictions_softmax: np.array, test_dataframe):
         """
         Calculate the metrics for the instance (patch) level.
         """
         predictions = np.argmax(predictions_softmax, axis=1)
         unlabeled_index = self.num_classes
-        gt_classes = self.test_df['class']
+        gt_classes = test_dataframe['class']
         indices_of_labeled_patches = (gt_classes != str(unlabeled_index))
         gt_classes = np.array(gt_classes[indices_of_labeled_patches]).astype(np.int)
         predictions = np.array(predictions[indices_of_labeled_patches]).astype(np.int)
@@ -91,7 +88,7 @@ class MetricCalculator():
             metrics[key] = f1_score_classwise[class_id]
         return metrics
 
-    def calc_optimal_wsi_metrics(self, val_predictions: np.array, test_predictions: np.array):
+    def calc_optimal_wsi_metrics(self, val_predictions: np.array, test_predictions: np.array, test_dataframe):
         """
         Calculate the WSI metrics for an optimal instance-level confidence threshold.
         We filter out outliers by disregarding predictions below an optimal threshold to avoid false positive bag
@@ -101,11 +98,11 @@ class MetricCalculator():
         :return:
         """
         confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
-        metrics_dict, artifacts, _ = self.calc_wsi_metrics(test_predictions, self.test_df, confidence_threshold, 'test')
+        metrics_dict, artifacts, _ = self.calc_wsi_metrics(test_predictions, test_dataframe, confidence_threshold)
         metrics_dict['confidence_threshold'] = confidence_threshold
         return metrics_dict, artifacts
 
-    def calc_wsi_metrics(self, predictions: np.array, gt_df, confidence_threshold: float, name: str):
+    def calc_wsi_metrics(self, predictions: np.array, gt_df, confidence_threshold: float):
         """
         Calculate the metrics for all WSI (bag-level)
         """
@@ -133,7 +130,7 @@ class MetricCalculator():
         best_result = 0.0
         optimal_threshold = 0.0
         for i in range(len(confidence_thresholds)):
-            _, _, opt_value = self.calc_wsi_metrics(predictions, gt_dataframe, confidence_thresholds[i], 'val')
+            _, _, opt_value = self.calc_wsi_metrics(predictions, gt_dataframe, confidence_thresholds[i])
             if opt_value > best_result:
                 best_result = opt_value
                 optimal_threshold = confidence_thresholds[i]

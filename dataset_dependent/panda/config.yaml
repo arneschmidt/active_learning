@@ -1,6 +1,7 @@
 data:
   dataset_name: panda
-  dir: /path/to/dataset_dir/
+  dir: /data/BasesDeDatos/Panda/Panda_patches_resized/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_resized/radb_only/
   artifact_dir: ./dataset_dependent/panda/
   image_target_size: [250, 250]
   num_classes: 4

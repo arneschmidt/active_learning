@@ -77,6 +77,10 @@ def create_feature_extactor(config: Dict):
     else:
         raise Exception("Choose valid model architecture!")
 
+    dropout_rate = config["model"]["feature_extractor"]["dropout"]
+    if dropout_rate > 0.0:
+        feature_extractor.add(Dropout(rate=dropout_rate))
+
     if config["model"]["feature_extractor"]["global_max_pooling"]:
         feature_extractor.add(GlobalMaxPool2D())
     if config["model"]["feature_extractor"]["num_output_features"] > 0:
@@ -150,11 +154,14 @@ def create_head(config: Dict, num_classes: int, num_training_points: int):
             tensor_fn = tfp.distributions.Distribution.sample
         if features < 1:
             raise Exception('Please set the num_output_features > 0 when using Gaussian processes.')
+        kernel = RBFKernelFn(trainable=config["model"]["head"]["gp"]["kernel_trainable"],
+                            amplitude=config["model"]["head"]["gp"]["kernel_amplitude"],
+                             length_scale=config["model"]["head"]["gp"]["kernel_length_scale"])
         head = tf.keras.Sequential([
             tf.keras.layers.Input(shape=[features]), #, batch_size=config["model"]["batch_size"]),
             tfp.layers.VariationalGaussianProcess(
                 num_inducing_points=num_inducing_points,
-                kernel_provider=RBFKernelFn(),
+                kernel_provider=kernel,
                 event_shape=[num_classes], # output dimensions
                 inducing_index_points_initializer=tf.keras.initializers.RandomUniform(
                     minval=0.3, maxval=0.7, seed=None
@@ -171,26 +178,24 @@ def create_head(config: Dict, num_classes: int, num_training_points: int):
             tf.keras.layers.Softmax(),
             tf.keras.layers.Lambda(mc_integration)
         ], name='head')
-        head.add_weight(name='num_training_points',
+        head.add_weight(name='kl_weight',
                         shape=(),
                         dtype=tf.float32,
-                        initializer=tf.constant_initializer(value=num_training_points),
+                        initializer=tf.constant_initializer(value=1.0),
                         trainable=False)
-        head.add_loss(kl_loss(head, config["model"]["batch_size"], config["model"]["head"]["gp"]["kl_weight"]))
+        head.add_loss(kl_loss(head))
         head.build()
     else:
         raise Exception("Choose valid model head!")
     return head
 
-def kl_loss(head, batch_size, kl_weight):
+def kl_loss(head):
     # tf.print('kl_div: ', kl_div)
     def _kl_loss():
-        num_training_points = head.variables[7]
-        # kl_weight = tf.cast(0.001 * batch_size / num_training_points, tf.float32)
-        weight = tf.cast(kl_weight * batch_size / num_training_points, tf.float32)
+        kl_weight = head.variables[7]
         kl_div = tf.reduce_sum(head.layers[0].submodules[5].surrogate_posterior_kl_divergence_prior())
 
-        loss = tf.multiply(weight, kl_div)
+        loss = tf.multiply(kl_weight, kl_div)
         # tf.print('kl_weight: ', kl_weight)
         # tf.print('kl_loss: ', loss)
         # # tf.print('u_var: ', head.variables[4])
@@ -202,19 +207,18 @@ class RBFKernelFn(tf.keras.layers.Layer):
     """
     RGF kernel for Gaussian processes.
     """
-    def __init__(self, **kwargs):
-        super(RBFKernelFn, self).__init__(**kwargs)
-        dtype = kwargs.get('dtype', None)
-
-        self._amplitude = self.add_variable(
-            initializer=tf.constant_initializer(0),
-            dtype=dtype,
+    def __init__(self, trainable=False, length_scale =0.1, amplitude=1.0):
+        super(RBFKernelFn, self).__init__()
+        self._amplitude_var = self.add_variable(
+            initializer=tf.constant_initializer(0.0),
             name='amplitude')
-
-        self._length_scale = self.add_variable(
-            initializer=tf.constant_initializer(0),
-            dtype=dtype,
+        self._length_scale_var = self.add_variable(
+            initializer=tf.constant_initializer(0.0),
             name='length_scale')
+        self.trainable = trainable
+        self.fixed_ls = length_scale
+        self.fixed_ampl = amplitude
+
 
     def call(self, x):
         # Never called -- this is just a layer so it can hold variables
@@ -223,7 +227,14 @@ class RBFKernelFn(tf.keras.layers.Layer):
 
     @property
     def kernel(self):
+        if self.trainable:
+            amplitude = tf.nn.softplus(1.0 * self._amplitude_var)
+            length_scale = tf.nn.softplus(1.0 * self._length_scale_var)
+        else:
+            amplitude = self.fixed_ampl
+            length_scale = self.fixed_ls
+
         return tfp.math.psd_kernels.ExponentiatedQuadratic(
-            amplitude=tf.nn.softplus(1.0 * self._amplitude), # 0.1
-            length_scale=tf.nn.softplus(1.0 * self._length_scale) # 5.
+            amplitude= amplitude ,# tf.nn.softplus(0.1 * self._amplitude), # 0.1
+            length_scale= length_scale #tf.nn.softplus(10.0 * self._length_scale) # 5.
         )

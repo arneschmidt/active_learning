@@ -2,6 +2,7 @@ from typing import Dict
 import mlflow
 import tensorflow
 import os
+import copy
 import numpy as np
 
 class MLFlowLogger:
@@ -10,17 +11,28 @@ class MLFlowLogger:
     """
     def __init__(self, config: Dict):
         mlflow.set_tracking_uri(config["logging"]["tracking_url"])
-        experiment_id = mlflow.set_experiment(experiment_name=config["data"]["dataset_name"])
+        experiment_id = mlflow.set_experiment(experiment_name='active_' + config["data"]["dataset_name"])
         mlflow.start_run(experiment_id=experiment_id, run_name=config["logging"]["run_name"])
         self.config = config
 
     def config_logging(self):
-        mlflow.log_params(self.config['model'])
-        mlflow.log_params(self.config['model']['feature_extractor'])
-        mlflow.log_params(self.config['data'])
-        head_type = self.config['model']['head']['type']
-        mlflow.log_param('head_type', head_type)
-        mlflow.log_params(self.config['model']['head'][head_type])
+        config = copy.deepcopy(self.config)
+        fe_config = config['model'].pop("feature_extractor")
+        log_fe_config = {}
+        for key in fe_config:
+            log_fe_config['fe_' + key] = fe_config[key]
+
+        head_config = config['model'].pop("head")
+        log_head_config = {}
+        for key in head_config:
+            log_head_config['head_' + key] = head_config[key]
+
+        al_config = config['data'].pop('active_learning')
+        mlflow.log_params(al_config)
+        mlflow.log_params(log_fe_config)
+        mlflow.log_params(log_head_config)
+        mlflow.log_params(config['model'])
+        mlflow.log_params(config['data'])
 
     def data_logging(self, data_dict):
         mlflow.log_params(data_dict)
@@ -39,41 +51,71 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
     def __init__(self, config, metric_calculator):
         super().__init__()
         self.finished_epochs = 0
+        self.acquisition_steps = 0
+        self.acquisition_step_metric = {}
         self.best_result = 0.0
-        self.new_best_result = False
+        self.best_result_epoch = 0
+        self.best_weights = None
         self.config = config
         self.metric_calculator = metric_calculator
+        self.params = {}
+        self.params['steps'] = 0
+        self.model_converged = False
 
     def on_batch_end(self, batch: int, logs=None):
-        if batch % 100 == 0:
-            current_step = int((self.finished_epochs * self.params['steps']) + batch)
-            # metrics_dict = format_metrics_for_mlflow(logs.copy())
-            metrics_dict = logs.copy()
-            mlflow.log_metrics(metrics_dict, step=current_step)
+        pass
+        # if batch % 100 == 0:
+        #     current_step = int((self.finished_epochs * self.params['steps']) + batch)
+        #     # metrics_dict = format_metrics_for_mlflow(logs.copy())
+        #     metrics_dict = logs.copy()
+        #     mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
-        metrics_dict, _ = self.metric_calculator.calc_metrics()
-        self.finished_epochs = epoch + 1
         current_step = int(self.finished_epochs * self.params['steps'])
-
+        self.finished_epochs = self.finished_epochs + 1
+        metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
-        mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
+        metrics_for_monitoring = self.config['model']['metrics_for_monitoring']
+        acc_threshold = self.config['data']['active_learning']['acquisition']['after_acc_above']
 
-        # Check if new best model
-        metrics_for_model_saving = self.config['model']['metrics_for_model_saving']
-        if metrics_dict[metrics_for_model_saving] > self.best_result:
-            self.new_best_result = True
-            print("\n New best model! Saving model..")
-            self.best_result = metrics_dict[metrics_for_model_saving]
-            if self.config["model"]["save_model"]:
-                self._save_model()
-            mlflow.log_metric("best_" + metrics_for_model_saving, metrics_dict[metrics_for_model_saving])
-            mlflow.log_metric("saved_model_epoch", self.finished_epochs)
-        else:
-            self.new_best_result = False
+        # If logging interval rached, calculate validation metrics
+        if self.finished_epochs % self.config['logging']['interval'] == 0:
+            metrics_dict, _ = self.metric_calculator.calc_metrics(mode='val')
+            mlflow.log_metrics(metrics_dict, step=current_step)
+            mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
+            mlflow.log_metric('acquisition_steps', self.acquisition_steps, step=current_step)
 
-    def _save_model(self):
-        save_dir = os.path.join(self.config["output_dir"], "models")
+            # If new best result, save model and set best epoch
+            if metrics_dict[metrics_for_monitoring] > self.best_result:
+                self.best_result_epoch = self.finished_epochs
+                self.best_result = metrics_dict[metrics_for_monitoring]
+                self.best_weights = self.model.get_weights()
+                if self.config["model"]["save_model"]:
+                    print("\n New best model! Saving model..")
+                    self._save_model('acquisition_' + str(self.acquisition_steps))
+                mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring])
+                mlflow.log_metric("saved_model_epoch", self.finished_epochs)
+            # If not, check if model has converged
+            else:
+                patience = self.config['data']['active_learning']['acquisition']['after_epochs_of_no_improvement']
+                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
+                    self.model.set_weights(self.best_weights)
+                    if self.config['logging']['test_on_the_fly']:
+                        metrics_dict, _ = self.metric_calculator.calc_metrics(mode='test')
+                        mlflow.log_metrics(metrics_dict, step=self.acquisition_steps)
+                    self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
+                    self.best_result = 0.0
+                    self.model_converged = True
+                    self.model.stop_training = True
+
+
+    def data_acquisition_logging(self, acquisition_step, data_aquisition_dict):
+        current_step = int(self.finished_epochs * self.params['steps'])
+        mlflow.log_metrics(data_aquisition_dict, step=current_step)
+        self.acquisition_steps = acquisition_step
+
+    def _save_model(self, name: str):
+        save_dir = os.path.join(self.config["output_dir"], "models/" + name)
         os.makedirs(save_dir, exist_ok=True)
         fe_path = os.path.join(save_dir, "feature_extractor.h5")
         head_path = os.path.join(save_dir, "head.h5")
