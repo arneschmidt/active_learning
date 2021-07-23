@@ -67,7 +67,7 @@ class Model:
                     mlflow_callback.model_converged = False
                     self.model.fit(
                         data_gen.train_generator_labeled,
-                        epochs=self.config['model']['epochs'],
+                        epochs=1, #self.config['model']['epochs'],
                         class_weight=class_weights,
                         steps_per_epoch=steps,
                         callbacks=callbacks,
@@ -144,7 +144,11 @@ class Model:
                 stop = (step + 1) * batch_size
                 if stop > len(cnn_out):
                     stop = len(cnn_out)
-                pred = tf.nn.softmax(vgp(cnn_out[start:stop]).sample(number_of_samples))
+                if stop-start > 1:
+                    pred = tf.nn.softmax(vgp(cnn_out[start:stop]).sample(number_of_samples))
+                else:
+                    # An error occurs when vgp takes only one input. Artificially enlarge, then squash input.
+                    tf.expand_dims(tf.nn.softmax(vgp(cnn_out[start-1:stop]).sample(number_of_samples))[:, 1, :], 1)
                 uncertainty = self.probabilistic_uncertainty_calculation(pred)
                 uncertainties = np.concatenate((uncertainties, uncertainty))
             uncertainties = np.array(uncertainties)
