@@ -157,8 +157,8 @@ class DataGenerator():
             shuffle=shuffle,
             classes=classes,
             class_mode=class_mode,
-            save_to_dir=self.config['data']['artifact_dir'] + "image_augmentation",
-            save_format='jpeg'
+            # save_to_dir=self.config['data']['artifact_dir'] + "image_augmentation",
+            # save_format='jpeg'
             )
 
         return generator
