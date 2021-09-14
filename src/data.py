@@ -91,25 +91,25 @@ class DataGenerator():
             return img
 
         def saturation_jitter(img):
-            if self.config['data']['augmentation']["saturation"]:
+            if self.config['data']['augmentation']["saturation"] > 0.0:
                 aug = mx.image.SaturationJitterAug(saturation=self.config['data']['augmentation']["saturation"])
                 img = aug(img)
             return img
 
         def contrast_jitter(img):
-            if self.config['data']['augmentation']["contrast"] > 0:
+            if self.config['data']['augmentation']["contrast"] > 0.0:
                 aug = mx.image.ContrastJitterAug(contrast=self.config['data']['augmentation']["contrast"])
                 img = aug(img)
             return img
 
         def brightness_jitter(img):
-            if self.config['data']['augmentation']["contrast"] > 0:
+            if self.config['data']['augmentation']["contrast"] > 0.0:
                 aug = mx.image.BrightnessJitterAug(brightness=self.config['data']['augmentation']["brightness"])
                 img = aug(img)
             return img
 
         def gaussian_blurr(img):
-            if self.config['data']['augmentation']["blur"] > 0:
+            if self.config['data']['augmentation']["blur"] > 0.0:
                 sigma = np.random.uniform(0, self.config['data']['augmentation']["blur"], 1)
                 img = gaussian(img, sigma=sigma[0], multichannel=True)
             return img
