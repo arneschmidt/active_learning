@@ -85,7 +85,7 @@ class Model:
                 print('\nModel did not converge! Stopping..')
                 # break
             if self.config['data']['supervision'] == 'active_learning':
-                selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
+                selected_wsis, train_indices = self.select_data_for_labeling(data_gen, mlflow_callback.best_metrics)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
 
     def test(self, data_gen: DataGenerator):
@@ -129,7 +129,7 @@ class Model:
             train_predictions = self.model.predict(generator, steps=train_steps)
             save_dataframe_with_output(dataframes[mode], train_predictions, train_features, output_dir, mode)
 
-    def predict_uncertainties(self, generator):
+    def predict_uncertainties(self, generator, val_metrics):
         print('Predict uncertainties..')
         if self.config['model']['head']['type'] == 'gp':
             number_of_samples = 10
@@ -149,7 +149,7 @@ class Model:
                 else:
                     # An error occurs when vgp takes only one input. Artificially enlarge, then squash input.
                     tf.expand_dims(tf.nn.softmax(vgp(cnn_out[start-1:stop]).sample(number_of_samples))[:, 1, :], 1)
-                uncertainty = self.probabilistic_uncertainty_calculation(pred)
+                uncertainty = self.probabilistic_uncertainty_calculation(pred, val_metrics)
                 uncertainties = np.concatenate((uncertainties, uncertainty))
             uncertainties = np.array(uncertainties)
         elif self.config['model']['head']['type'] == 'deterministic':
@@ -159,10 +159,13 @@ class Model:
         assert uncertainties.size == generator.n
         return uncertainties
 
-    def probabilistic_uncertainty_calculation(self, prediction_samples):
+    def probabilistic_uncertainty_calculation(self, prediction_samples, val_metrics):
         acquisition_method = self.config['data']['active_learning']['acquisition']['strategy']
         if acquisition_method == 'max_var':
             uncertainty = np.mean(np.std(prediction_samples, axis=0), axis=-1)
+        elif acquisition_method == 'max_class_var':
+            class_id = self._calculate_most_uncertain_class(val_metrics)
+            uncertainty = np.std(prediction_samples, axis=0)[...,class_id]
         elif acquisition_method == 'entropy':
             mean = np.mean(prediction_samples, axis=0)
             uncertainty = - np.sum(np.multiply(mean, np.log(mean)), axis=1)
@@ -189,7 +192,7 @@ class Model:
             uncertainty = 1 - np.max(predictions, axis=1)
         return uncertainty
 
-    def select_data_for_labeling(self, data_gen: DataGenerator):
+    def select_data_for_labeling(self, data_gen: DataGenerator, val_metrics: Dict):
         print('Select data to be labeled..')
         dataframe = data_gen.train_df.loc[np.logical_not(data_gen.train_df['labeled'])]
         wsi_dataframe = data_gen.wsi_df
@@ -200,7 +203,7 @@ class Model:
         labels_per_wsi = self.config['data']['active_learning']['acquisition']['labels_per_wsi']
 
         if strategy != 'random':
-            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
+            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled, val_metrics)
             sorted_rows = np.argsort(uncertainties_of_unlabeled)[::-1]
         else:
             if wsi_selection != 'random':
@@ -310,6 +313,16 @@ class Model:
             weight = tf.cast(kl_weight, tf.float32)
 
         self.model.layers[1].variables[7].assign(weight)
+
+
+    def _calculate_most_uncertain_class(self, val_metrics: Dict):
+        metrics_name = 'val_f1_class_id_'
+        metrics = []
+        for i in range(self.num_classes):
+            class_f1 = val_metrics[metrics_name + str(i)]
+            metrics.append(class_f1)
+        uncertain_class_id = np.argmin(metrics)
+        return uncertain_class_id
 
 
     def _load_combined_model(self, artifact_path: str = "./models/"):
