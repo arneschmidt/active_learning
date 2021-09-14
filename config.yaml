@@ -17,6 +17,7 @@ model:
     global_max_pooling: False
     num_output_features: 8 # feature dimension of feature extractor output, set to 0 to skip this layer
     output_activation: sigmoid # sigmoid, relu
+    dropout: 0.5
   head:
     type: deterministic # deterministic, gp, bnn
     deterministic:
@@ -24,7 +25,8 @@ model:
       number_hidden_units: 0 # feature dimension of hidden layer, set to 0 to skip this layer
     gp:
       inducing_points: 200
-      kl_weights: [0.1]
+      kl_weights: [1.0]
+      kl_decrease: True
       kernel_trainable: False
       kernel_amplitude: 0.9
       kernel_length_scale: 0.1
@@ -37,8 +39,15 @@ data:
   supervision: active_learning # 'supervised', 'active_learning'
   random_seed: 1
   augmentation:
-    brightness_range: [0.5, 1.5] # brightness augmentation range for strong augmentation
-    channel_shift: 0.0
+    channel_shift_range: 0.2
+    width_shift_range: 0.2 # fraction of total width <1
+    height_shift_range: 0.2 # fraction of total height <1
+    zoom_range: 0.2 # [1-zoom_range, 1+zoom_range]
+    hue: 0.2 # between 0 and 1
+    saturation: 0.2 # between 0 and 1
+    contrast: 0.2 # between 0 and 1
+    blur: 2 # sigma range for gaussian blur
+    brightness: 0.2 # between 0 and 1
   active_learning:
     start:
       wsis_per_class: 1

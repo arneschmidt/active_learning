@@ -67,7 +67,7 @@ class Model:
                     mlflow_callback.model_converged = False
                     self.model.fit(
                         data_gen.train_generator_labeled,
-                        epochs=1, #self.config['model']['epochs'],
+                        epochs=self.config['model']['epochs'],
                         class_weight=class_weights,
                         steps_per_epoch=steps,
                         callbacks=callbacks,

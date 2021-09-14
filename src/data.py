@@ -1,6 +1,8 @@
 import os
+import mxnet as mx
 import pandas as pd
 import numpy as np
+from skimage.filters import gaussian
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from utils.data_utils import extract_df_info, extract_wsi_df_info, get_start_label_ids
 from typing import Dict, Optional, Tuple
@@ -78,17 +80,61 @@ class DataGenerator():
         :param target_mode: 'class': loads patch classes, 'index': loads indices instead, or 'None' only loads images
         :return: data generator loading patches and labels (or indices)
         """
+
         if dataframe is None:
             return None
 
+        def hue_jitter(img):
+            if self.config['data']['augmentation']["hue"] > 0.0:
+                aug = mx.image.HueJitterAug(hue=self.config['data']['augmentation']["hue"])
+                img = aug(img)
+            return img
+
+        def saturation_jitter(img):
+            if self.config['data']['augmentation']["saturation"] > 0.0:
+                aug = mx.image.SaturationJitterAug(saturation=self.config['data']['augmentation']["saturation"])
+                img = aug(img)
+            return img
+
+        def contrast_jitter(img):
+            if self.config['data']['augmentation']["contrast"] > 0.0:
+                aug = mx.image.ContrastJitterAug(contrast=self.config['data']['augmentation']["contrast"])
+                img = aug(img)
+            return img
+
+        def brightness_jitter(img):
+            if self.config['data']['augmentation']["contrast"] > 0.0:
+                aug = mx.image.BrightnessJitterAug(brightness=self.config['data']['augmentation']["brightness"])
+                img = aug(img)
+            return img
+
+        def gaussian_blurr(img):
+            if self.config['data']['augmentation']["blur"] > 0.0:
+                sigma = np.random.uniform(0, self.config['data']['augmentation']["blur"], 1)
+                img = gaussian(img, sigma=sigma[0], multichannel=True)
+            return img
+
+        def custom_augmentation(img):
+            img = mx.nd.array(img)
+            img = hue_jitter(img)
+            img = saturation_jitter(img)
+            img = contrast_jitter(img)
+            img = brightness_jitter(img)
+            img = img.asnumpy()
+            img = gaussian_blurr(img)
+            return img
+
         if image_augmentation:
             datagen = ImageDataGenerator(
-                brightness_range=self.config['data']['augmentation']['brightness_range'],
-                channel_shift_range=self.config['data']['augmentation']["channel_shift"],
+                width_shift_range=self.config['data']['augmentation']["width_shift_range"],
+                height_shift_range=self.config['data']['augmentation']["height_shift_range"],
+                channel_shift_range=self.config['data']['augmentation']["channel_shift_range"],
+                zoom_range=self.config['data']['augmentation']["zoom_range"],
                 rotation_range=360,
-                fill_mode='reflect',
+                fill_mode='constant',
                 horizontal_flip=True,
-                vertical_flip=True)
+                vertical_flip=True,
+                preprocessing_function=custom_augmentation)
         else:
             datagen = ImageDataGenerator()
 
@@ -111,7 +157,7 @@ class DataGenerator():
             shuffle=shuffle,
             classes=classes,
             class_mode=class_mode,
-            # save_to_dir=self.config['data']['artifact_dir'] + '/' + image_augmentation,
+            # save_to_dir=self.config['data']['artifact_dir'] + "image_augmentation",
             # save_format='jpeg'
             )
 
