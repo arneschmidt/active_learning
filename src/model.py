@@ -21,6 +21,7 @@ class Model:
     """
     def __init__(self, config: Dict, n_training_points: int):
         self.n_training_points = n_training_points
+        self.acquisition_step = 0
         self.batch_size = config["model"]["batch_size"]
         self.num_classes = config["data"]["num_classes"]
         self.config = config
@@ -52,6 +53,7 @@ class Model:
             total_acquisition_steps = 1
 
         for acquisition_step in range(total_acquisition_steps):
+            self.acquisition_step = acquisition_step
             self.n_training_points = data_gen.get_number_of_training_points()
             mlflow_callback.data_acquisition_logging(acquisition_step, data_gen.get_labeling_statistics())
             # Optional: class-weighting based on groundtruth and estimated labels
@@ -202,12 +204,19 @@ class Model:
         wsis_per_acquisition = self.config['data']['active_learning']['acquisition']['wsis']
         labels_per_wsi = self.config['data']['active_learning']['acquisition']['labels_per_wsi']
 
-        if strategy != 'random':
+        if strategy != 'random' and wsi_selection != 'gradual_learning':
             uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled, val_metrics)
             sorted_rows = np.argsort(uncertainties_of_unlabeled)[::-1]
+        elif wsi_selection == 'gradual_learning':
+            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled, val_metrics)
+            mean_unc = np.mean(uncertainties_of_unlabeled)
+            max_unc = np.max(uncertainties_of_unlabeled)
+            factor = np.clip(self.acquisition_step / 20, a_max=1.0)
+            fix_uncertainty = mean_unc + (max_unc - mean_unc) * factor
         else:
             if wsi_selection != 'random':
                 raise Exception('Please set wsi_selection to random when using strategy = random')
+
 
         if wsi_selection == 'uncertainty_max':
             already_labeled_wsi = wsi_dataframe['slide_id'].loc[wsi_dataframe['labeled']]
@@ -230,6 +239,20 @@ class Model:
                 mean_uncertainties[i] = np.mean(uncertainties_of_unlabeled[rows])
             sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
             selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+        elif wsi_selection == 'gradual_learning':
+            unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                          wsi_dataframe['Partition'] == 'train')])
+            mean_uncertainties= np.zeros_like(unlabeled_wsis)
+            for i in range(len(unlabeled_wsis)):
+                rows = dataframe['wsi'] == unlabeled_wsis[i]
+                mean_uncertainties[i] = np.mean(uncertainties_of_unlabeled[rows])
+            # sorted_wsi_rows = np.argsort(mean_uncertainties)
+            wsi_diff = np.abs(mean_uncertainties - fix_uncertainty)
+            sorted_wsi_rows = np.argsort(wsi_diff)
+            selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+
+            patch_diff = np.abs(uncertainties_of_unlabeled - fix_uncertainty)
+            sorted_rows = np.argsort(patch_diff)
         else:
             unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
                                                                           wsi_dataframe['Partition'] == 'train')]
