@@ -211,7 +211,7 @@ class Model:
             uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled, val_metrics)
             mean_unc = np.mean(uncertainties_of_unlabeled)
             max_unc = np.max(uncertainties_of_unlabeled)
-            factor = np.clip(self.acquisition_step / 20, a_max=1.0)
+            factor = np.clip(self.acquisition_step / 20, a_min=0.0, a_max=1.0)
             fix_uncertainty = mean_unc + (max_unc - mean_unc) * factor
         else:
             if wsi_selection != 'random':
