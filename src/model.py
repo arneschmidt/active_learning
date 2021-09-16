@@ -326,7 +326,7 @@ class Model:
 
     def _set_kl_weight(self, acquisition_step):
         kl_weights = self.config['model']['head']['gp']['kl_weights']
-        if len(kl_weights) <= acquisition_step:
+        if len(kl_weights) >= acquisition_step:
             kl_weight = kl_weights[-1]
         else:
             kl_weight = kl_weights[acquisition_step]
