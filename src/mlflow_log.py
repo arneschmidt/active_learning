@@ -89,6 +89,7 @@ class MLFlowCallback(tensorflow.keras.callbacks.Callback):
             if metrics_dict[metrics_for_monitoring] > self.best_result:
                 self.best_result_epoch = self.finished_epochs
                 self.best_result = metrics_dict[metrics_for_monitoring]
+                self.best_metrics = metrics_dict
                 self.best_weights = self.model.get_weights()
                 if self.config["model"]["save_model"]:
                     print("\n New best model! Saving model..")

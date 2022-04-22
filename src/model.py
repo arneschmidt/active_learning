@@ -21,6 +21,7 @@ class Model:
     """
     def __init__(self, config: Dict, n_training_points: int):
         self.n_training_points = n_training_points
+        self.acquisition_step = 0
         self.batch_size = config["model"]["batch_size"]
         self.num_classes = config["data"]["num_classes"]
         self.config = config
@@ -52,6 +53,7 @@ class Model:
             total_acquisition_steps = 1
 
         for acquisition_step in range(total_acquisition_steps):
+            self.acquisition_step = acquisition_step
             self.n_training_points = data_gen.get_number_of_training_points()
             mlflow_callback.data_acquisition_logging(acquisition_step, data_gen.get_labeling_statistics())
             # Optional: class-weighting based on groundtruth and estimated labels
@@ -85,7 +87,7 @@ class Model:
                 print('\nModel did not converge! Stopping..')
                 # break
             if self.config['data']['supervision'] == 'active_learning':
-                selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
+                selected_wsis, train_indices = self.select_data_for_labeling(data_gen, mlflow_callback.best_metrics)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
 
     def test(self, data_gen: DataGenerator):
@@ -129,7 +131,7 @@ class Model:
             train_predictions = self.model.predict(generator, steps=train_steps)
             save_dataframe_with_output(dataframes[mode], train_predictions, train_features, output_dir, mode)
 
-    def predict_uncertainties(self, generator):
+    def predict_uncertainties(self, generator, val_metrics):
         print('Predict uncertainties..')
         if self.config['model']['head']['type'] == 'gp':
             number_of_samples = 10
@@ -149,7 +151,7 @@ class Model:
                 else:
                     # An error occurs when vgp takes only one input. Artificially enlarge, then squash input.
                     tf.expand_dims(tf.nn.softmax(vgp(cnn_out[start-1:stop]).sample(number_of_samples))[:, 1, :], 1)
-                uncertainty = self.probabilistic_uncertainty_calculation(pred)
+                uncertainty = self.probabilistic_uncertainty_calculation(pred, val_metrics)
                 uncertainties = np.concatenate((uncertainties, uncertainty))
             uncertainties = np.array(uncertainties)
         elif self.config['model']['head']['type'] == 'deterministic':
@@ -159,10 +161,13 @@ class Model:
         assert uncertainties.size == generator.n
         return uncertainties
 
-    def probabilistic_uncertainty_calculation(self, prediction_samples):
+    def probabilistic_uncertainty_calculation(self, prediction_samples, val_metrics):
         acquisition_method = self.config['data']['active_learning']['acquisition']['strategy']
         if acquisition_method == 'max_var':
             uncertainty = np.mean(np.std(prediction_samples, axis=0), axis=-1)
+        elif acquisition_method == 'max_class_var':
+            class_id = self._calculate_most_uncertain_class(val_metrics)
+            uncertainty = np.std(prediction_samples, axis=0)[...,class_id]
         elif acquisition_method == 'entropy':
             mean = np.mean(prediction_samples, axis=0)
             uncertainty = - np.sum(np.multiply(mean, np.log(mean)), axis=1)
@@ -189,7 +194,7 @@ class Model:
             uncertainty = 1 - np.max(predictions, axis=1)
         return uncertainty
 
-    def select_data_for_labeling(self, data_gen: DataGenerator):
+    def select_data_for_labeling(self, data_gen: DataGenerator, val_metrics: Dict):
         print('Select data to be labeled..')
         dataframe = data_gen.train_df.loc[np.logical_not(data_gen.train_df['labeled'])]
         wsi_dataframe = data_gen.wsi_df
@@ -199,12 +204,19 @@ class Model:
         wsis_per_acquisition = self.config['data']['active_learning']['acquisition']['wsis']
         labels_per_wsi = self.config['data']['active_learning']['acquisition']['labels_per_wsi']
 
-        if strategy != 'random':
-            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled)
+        if strategy != 'random' and wsi_selection != 'gradual_learning':
+            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled, val_metrics)
             sorted_rows = np.argsort(uncertainties_of_unlabeled)[::-1]
+        elif wsi_selection == 'gradual_learning':
+            uncertainties_of_unlabeled = self.predict_uncertainties(data_gen.train_generator_unlabeled, val_metrics)
+            mean_unc = np.mean(uncertainties_of_unlabeled)
+            max_unc = np.max(uncertainties_of_unlabeled)
+            factor = np.clip(self.acquisition_step / 20, a_min=0.0, a_max=1.0)
+            fix_uncertainty = mean_unc + (max_unc - mean_unc) * factor
         else:
             if wsi_selection != 'random':
                 raise Exception('Please set wsi_selection to random when using strategy = random')
+
 
         if wsi_selection == 'uncertainty_max':
             already_labeled_wsi = wsi_dataframe['slide_id'].loc[wsi_dataframe['labeled']]
@@ -227,6 +239,20 @@ class Model:
                 mean_uncertainties[i] = np.mean(uncertainties_of_unlabeled[rows])
             sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
             selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+        elif wsi_selection == 'gradual_learning':
+            unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                          wsi_dataframe['Partition'] == 'train')])
+            mean_uncertainties= np.zeros_like(unlabeled_wsis)
+            for i in range(len(unlabeled_wsis)):
+                rows = dataframe['wsi'] == unlabeled_wsis[i]
+                mean_uncertainties[i] = np.mean(uncertainties_of_unlabeled[rows])
+            # sorted_wsi_rows = np.argsort(mean_uncertainties)
+            wsi_diff = np.abs(mean_uncertainties - fix_uncertainty)
+            sorted_wsi_rows = np.argsort(wsi_diff)
+            selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+
+            patch_diff = np.abs(uncertainties_of_unlabeled - fix_uncertainty)
+            sorted_rows = np.argsort(patch_diff)
         else:
             unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
                                                                           wsi_dataframe['Partition'] == 'train')]
@@ -310,6 +336,16 @@ class Model:
             weight = tf.cast(kl_weight, tf.float32)
 
         self.model.layers[1].variables[7].assign(weight)
+
+
+    def _calculate_most_uncertain_class(self, val_metrics: Dict):
+        metrics_name = 'val_f1_class_id_'
+        metrics = []
+        for i in range(self.num_classes):
+            class_f1 = val_metrics[metrics_name + str(i)]
+            metrics.append(class_f1)
+        uncertain_class_id = np.argmin(metrics)
+        return uncertain_class_id
 
 
     def _load_combined_model(self, artifact_path: str = "./models/"):
