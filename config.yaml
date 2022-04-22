@@ -51,12 +51,12 @@ data:
   active_learning:
     start:
       wsis_per_class: 1
-      labels_per_class_and_wsi: 10 # -1 (all) or number of labels per wsi
+      labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
     acquisition:
       strategy: max_class_var # 'max_var', 'bald', 'entropy', 'random', 'var_ratio', 'max_class_var'
       wsis: 5
-      wsi_selection: uncertainty_mean # 'random', 'uncertainty_max' or 'uncertainty_mean'
-      labels_per_wsi: 10
+      wsi_selection: gradual_learning # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
+      labels_per_wsi: 5
       after_epochs_of_no_improvement: 1
       after_acc_above: 0.8
       total_steps: 30
