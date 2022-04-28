@@ -1,11 +1,11 @@
 # This is the main config. Parameters are updated and possibly overwritten by dataset dependent configs.
+random_seed: 0
 model:
-  mode: train # "train", "test", "predict", "predict_features"
   batch_size: 8
-  epochs: 400
-  learning_rate: 0.1
-  optimizer: sgd
-  class_weighted_loss: False
+  epochs: 10
+  learning_rate: 0.0001
+  optimizer: adam # adam, sgd
+  class_weighted_loss: True
   loss_function: categorical_crossentropy # "categorical_crossentropy", "focal_loss"
   metrics_patch_level: True
   metrics_wsi_level: True
@@ -15,24 +15,29 @@ model:
   feature_extractor:
     type: efficientnetb1 # "fsconv", "simple_cnn", "mobilenetv2", "resnet50", "efficientnetb0", "efficientnetb1", "eff.."
     global_max_pooling: False
-    num_output_features: 8 # feature dimension of feature extractor output, set to 0 to skip this layer
-    output_activation: sigmoid # sigmoid, relu
+    num_output_features: 64 # feature dimension of feature extractor output, set to 0 to skip this layer
+    output_activation: relu # sigmoid, relu
     dropout: 0.5
   head:
-    type: deterministic # deterministic, gp, bnn
+    type: bnn # deterministic, bnn
     deterministic:
-      dropout: 0.2
-      number_hidden_units: 0 # feature dimension of hidden layer, set to 0 to skip this layer
-    gp:
-      inducing_points: 200
-      kl_weights: [1.0]
-      kl_decrease: True
-      kernel_trainable: False
-      kernel_amplitude: 0.9
-      kernel_length_scale: 0.1
+      dropout: 0.0
+      number_hidden_units: 64 # feature dimension of hidden layer, set to 0 to skip this layer
     bnn:
-      number_hidden_units: 100
+      number_hidden_units: 64
       kl_loss_factor: 1
+  acquisition:
+    random: False # if True, all other acquisition parameters are ignored
+    keep_trained_weights: False
+    uncertainty_calculation: variance_based # variance_based, entropy_based
+    focussed_epistemic: True
+    ood_k_neighbors: 20
+    aleatoric_factor: 0.5
+    ood_factor: 2.0
+    after_epochs_of_no_improvement: 1
+    after_acc_above: 0.8
+    wsi_selection: uncertainty_mean # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
+
 
 data:
   dataset_config: ./dataset_dependent/panda/config.yaml
@@ -52,18 +57,16 @@ data:
     start:
       wsis_per_class: 1
       labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
-    acquisition:
-      strategy: max_class_var # 'max_var', 'bald', 'entropy', 'random', 'var_ratio', 'max_class_var'
+    step:
       wsis: 5
-      wsi_selection: gradual_learning # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
       labels_per_wsi: 5
-      after_epochs_of_no_improvement: 1
-      after_acc_above: 0.8
+      flexible_labeling: True # if True, the labels of one step can be distributed freely within the selected WSIs
       total_steps: 30
+
 
 logging:
   log_artifacts: False
   interval: 5
   test_on_the_fly: True
   run_name: efficientnetb1
-  tracking_url: /home/arne/projects/mlruns
+  tracking_url: /work/work_arne/mlflow_server
