@@ -6,7 +6,7 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import numpy as np
 import pandas as pd
-from mlflow_log import MLFlowCallback
+from mlflow_log import MLFlowCallback, log_and_store_metrics
 from model_architecture import create_model
 from sklearn.neighbors import LocalOutlierFactor
 from utils.save_utils import save_dataframe_with_output, save_metrics_artifacts
@@ -31,6 +31,7 @@ class ModelHandler:
         self.model = create_model(n_training_points)
         if config["model"]["load_model"] != 'None':
             self._load_combined_model(config["model"]["load_model"])
+        self.ood_estimator = None
         self._compile_model()
 
         print(self.model.layers[0].summary())
@@ -42,7 +43,7 @@ class ModelHandler:
         :param data_gen: data generator object to provide the image data generators and dataframes
         """
         # initialize callback for training procedure: logging and metrics calculation at the end of each epoch
-        metric_calculator = MetricCalculator(self.model, data_gen, globals.config)
+        metric_calculator = MetricCalculator(self, data_gen, globals.config)
         mlflow_callback = MLFlowCallback(metric_calculator)
         callbacks = [mlflow_callback]
 
@@ -55,10 +56,11 @@ class ModelHandler:
         self.n_training_points = data_gen.get_number_of_training_points()
 
         for acquisition_step in range(total_acquisition_steps):
+            step = self.n_training_points
             self.acquisition_step = acquisition_step
             self.class_weights = data_gen.calculate_class_weights()
 
-            mlflow_callback.data_acquisition_logging(acquisition_step, data_gen.get_labeling_statistics())
+            mlflow.log_metrics(data_gen.get_labeling_statistics(), step)
             # Optional: class-weighting based on groundtruth and estimated labels
             if globals.config["model"]["class_weighted_loss"]:
                 class_weights = self.class_weights
@@ -73,35 +75,38 @@ class ModelHandler:
                 steps_per_epoch=steps,
                 callbacks=callbacks,
             )
+            if globals.config['model']['test_on_the_fly']:
+                self.test(data_gen)
 
             if globals.config['data']['supervision'] == 'active_learning':
-                mlflow.log_metrics(self.uncertainty_logs)
+                mlflow.log_metrics(self.uncertainty_logs, step)
                 selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
                 self.n_training_points = data_gen.get_number_of_training_points()
                 self.update_model(self.n_training_points)
 
-
-
-    def test(self, data_gen: DataGenerator):
+    def test(self, data_gen: DataGenerator, step=None):
         """
         Test the model with the parameters specified in the config. Log progress to mlflow (see README)
         :param data_gen: data generator object to provide the image data generators and dataframes
         :return: dict of metrics from testing
         """
         metric_calculator = MetricCalculator(self.model, data_gen, globals.config)
-        metrics, artifacts = metric_calculator.calc_metrics()
-        save_metrics_artifacts(artifacts, globals.config['output_dir'])
-        return metrics
+        metrics, artifacts = metric_calculator.calc_metrics(mode='test')
+        save_metrics_artifacts(artifacts, globals.config['logging']['experiment_folder'])
+        log_and_store_metrics(metrics, step)
 
-    def predict(self, data_gen: DataGenerator):
+    def predict(self, data):
         """
         Save predictions of a single random batch for demonstration purposes.
         :param data_gen:  data generator object to provide the image data generators and dataframes
         """
-        image_batch = data_gen.test_generator.next()
-        predictions = self.model.predict(image_batch[0], steps=1)
-        self._save_predictions(image_batch, predictions, globals.config['output_dir'])
+        features = self.get_features(data)
+        preds = self.get_predictions(features)
+
+        if globals.config['model']['head']['type'] == 'bnn':
+            preds = np.mean(preds, axis=0)
+        return preds
 
     def get_features(self, ds):
         feature_extractor = self.model.layers[0]
@@ -156,9 +161,9 @@ class ModelHandler:
             selected_wsis = np.random.choice(unlabeled_wsis, size=wsis_per_acquisition, replace=False)
 
         # get the highest uncertainties of the selected WSIs
-        ids = np.array([])
 
         if not globals.config['data']['active_learning']['step']['flexible_labeling']:
+            ids = np.array([])
             for wsi in selected_wsis:
                 wsi_rows = np.array([])
                 if not globals.config['model']['acquisition']['random']:
@@ -177,11 +182,13 @@ class ModelHandler:
                 print('Requested labels: ', ids.size)
                 print('Not enough labels obtained!')
         else:
+            ids = []
             for row in sorted_rows:
                 if dataframe['wsi'].iloc[row] in selected_wsis:
-                    np.concatenate([ids, row], axis=None)
-                if ids.size > wsis_per_acquisition*labels_per_wsi:
+                    ids.append(row)
+                if len(ids) > wsis_per_acquisition*labels_per_wsi:
                     break
+            ids = np.array(ids)
 
         return selected_wsis, ids
 
@@ -360,7 +367,7 @@ class ModelHandler:
         aleatoric_factor = globals.config['model']['acquisition']['aleatoric_factor']
         ood_factor = globals.config['model']['acquisition']['ood_factor']
 
-        acq_scores = np.clip(epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob, a_min=0.0, a_max=1.0)
+        acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
 
         self.uncertainty_logs['acq_scores_mean'] = np.mean(acq_scores)
         self.uncertainty_logs['acq_scores_min'] = np.min(acq_scores)

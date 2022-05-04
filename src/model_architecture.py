@@ -10,6 +10,8 @@ from tensorflow.keras.applications.efficientnet import EfficientNetB0, Efficient
 from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense, Conv2D, Dropout, MaxPool2D, Flatten, GlobalMaxPool2D, SeparableConv2D
+from tensorflow_probability.python.layers import util as tfp_layers_util
+
 import globals
 
 def create_model(num_training_points: int):
@@ -79,42 +81,61 @@ def create_feature_extactor():
 
 
 def create_head(num_training_points: int):
-    head_type = globals.config["model"]["head"]["type"]
-    num_classes = globals.config["data"]["num_classes"]
-    if head_type == "deterministic":
-        hidden_units = globals.config["model"]["head"]["deterministic"]["number_hidden_units"]
-        dropout_rate = globals.config["model"]["head"]["deterministic"]["dropout"]
-        head = Sequential(name='head')
-        head.add(Dropout(rate=dropout_rate))
-        if hidden_units > 0 :
+        config = globals.config
+        head_type = config["model"]["head"]["type"]
+
+        num_classes = config['data']['num_classes']
+        if head_type == "deterministic":
+            hidden_units = config["model"]["head"]["deterministic"]["number_hidden_units"]
+            dropout_rate = config["model"]["head"]["deterministic"]["dropout"]
+            head = Sequential(name='head')
+            head.add(Dropout(rate=dropout_rate))
             head.add(Dense(hidden_units, activation="relu"))
-        head.add(Dense(int(num_classes), activation="softmax"))
+            if config["model"]["head"]["deterministic"]["extra_layer"]:
+                head.add(Dense(hidden_units, activation="relu"))
+            head.add(Dense(int(num_classes), activation="softmax"))
 
-    elif head_type == "bnn":
-        number_hidden_units = globals.config["model"]["head"]["bnn"]["number_hidden_units"]
-        kl_factor = globals.config["model"]["head"]["bnn"]["kl_loss_factor"]
-        tfd = tfp.distributions
-        # scaling of KL divergence to batch is included already, scaling to dataset size needs to be done
-        kl_divergence_function = (lambda q, p, _: tfd.kl_divergence(q, p)* kl_factor /  # pylint: disable=g-long-lambda
-                                                  tf.cast(num_training_points, dtype=tf.float32))
+        elif head_type == "bnn":
+            number_hidden_units = config["model"]["head"]["bnn"]["number_hidden_units"]
+            activation = 'relu'
+            weight_std = config["model"]["head"]["bnn"]["weight_std"]
+            weight_std_softplusinv = tfp.math.softplus_inverse(weight_std)
 
-        tensor_fn = (lambda d: d.sample())
+            kl_factor =  tf.Variable(initial_value=config["model"]["head"]["bnn"]["kl_loss_factor"], trainable=False, dtype=tf.float32)
+            tfd = tfp.distributions
+            # scaling of KL divergence to batch is included already, scaling to dataset size needs to be done
+            kl_divergence_function = (lambda q, p, _: tfd.kl_divergence(q, p) * tf.cast(kl_factor / num_training_points, dtype=tf.float32))   #  tf.cast(num_training_points, dtype=tf.float32))
 
-        head = tf.keras.Sequential([
-            tfp.layers.DenseReparameterization(activation=tf.nn.relu, units=number_hidden_units,
-                                               kernel_divergence_fn=kl_divergence_function,
-                                               bias_divergence_fn=kl_divergence_function,
-                                               kernel_posterior_tensor_fn=tensor_fn,
-                                               bias_posterior_tensor_fn=tensor_fn
-                                               ),
-            tfp.layers.DenseReparameterization(activation="softmax", units=int(num_classes),
-                                               kernel_divergence_fn=kl_divergence_function,
-                                               bias_divergence_fn=kl_divergence_function,
-                                               kernel_posterior_tensor_fn=tensor_fn,
-                                               bias_posterior_tensor_fn=tensor_fn
-                                               ),
-        ], name='head')
-    else:
-        raise Exception("Choose valid model head!")
-    return head
+            kernel_posterior_fn = tfp_layers_util.default_mean_field_normal_fn(
+                untransformed_scale_initializer=tf.keras.initializers.RandomNormal(mean=weight_std_softplusinv, stddev=0.1)) # softplus transformed init param
+
+            tensor_fn = (lambda d: d.sample())
+
+            layers = [tfp.layers.DenseReparameterization(activation=activation, units=number_hidden_units,
+                                                         kernel_posterior_fn=kernel_posterior_fn,
+                                                         kernel_divergence_fn=kl_divergence_function,
+                                                         bias_divergence_fn=kl_divergence_function,
+                                                         kernel_posterior_tensor_fn=tensor_fn,
+                                                         bias_posterior_tensor_fn=tensor_fn
+                                                         )]
+            if config["model"]["head"]["bnn"]["extra_layer"]:
+                layers.append(tfp.layers.DenseReparameterization(activation=activation, units=number_hidden_units,
+                                                                 kernel_posterior_fn=kernel_posterior_fn,
+                                                                 kernel_divergence_fn=kl_divergence_function,
+                                                                 bias_divergence_fn=kl_divergence_function,
+                                                                 kernel_posterior_tensor_fn=tensor_fn,
+                                                                 bias_posterior_tensor_fn=tensor_fn
+                                                                 ))
+            layers.append(tfp.layers.DenseReparameterization(activation="softmax", units=int(num_classes),
+                                                             kernel_posterior_fn=kernel_posterior_fn,
+                                                             kernel_divergence_fn=kl_divergence_function,
+                                                             bias_divergence_fn=kl_divergence_function,
+                                                             kernel_posterior_tensor_fn=tensor_fn,
+                                                             bias_posterior_tensor_fn=tensor_fn
+                                                             ))
+
+            head = tf.keras.Sequential(layers, name='head')
+        else:
+            raise Exception("Choose valid model head!")
+        return head
 

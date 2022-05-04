@@ -4,47 +4,59 @@ import os
 import copy
 import globals
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 from tensorflow.python.keras import backend as K
 
-class MLFlowLogger:
-    """
-    Object to collect configuration parameters, metrics and artifacts and log them with mlflow.
-    """
-    def __init__(self):
-        mlflow.set_tracking_uri(globals.config["logging"]["tracking_url"])
-        experiment_id = mlflow.set_experiment(experiment_name='active_' + globals.config["data"]["dataset_name"])
-        mlflow.start_run(experiment_id=experiment_id, run_name=globals.config["logging"]["run_name"])
+result_dataframe = pd.DataFrame()
 
-    def config_logging(self):
-        config = copy.deepcopy(globals.config)
-        fe_config = config['model'].pop("feature_extractor")
-        log_fe_config = {}
-        for key in fe_config:
-            log_fe_config['fe_' + key] = fe_config[key]
+def start_logging():
+    mlflow.set_tracking_uri(globals.config["logging"]["tracking_url"])
+    experiment_id = mlflow.set_experiment(experiment_name='active_' + globals.config["data"]["dataset_name"])
+    mlflow.start_run(experiment_id=experiment_id, run_name=globals.config["logging"]["run_name"])
+    config_logging()
 
-        head_config = config['model'].pop("head")
-        log_head_config = {}
-        for key in head_config:
-            log_head_config['head_' + key] = head_config[key]
+def config_logging():
+    config = copy.deepcopy(globals.config)
+    fe_config = config['model'].pop("feature_extractor")
+    log_fe_config = {}
+    for key in fe_config:
+        log_fe_config['fe_' + key] = fe_config[key]
 
-        al_config = config['data'].pop('active_learning')
-        mlflow.log_params(al_config)
-        acquisition_config = config['model'].pop('acquisition')
-        mlflow.log_params(acquisition_config)
-        mlflow.log_params(log_fe_config)
-        mlflow.log_params(log_head_config)
-        mlflow.log_params(config['model'])
-        mlflow.log_params(config['data'])
+    head_config = config['model'].pop("head")
+    log_head_config = {}
+    for key in head_config:
+        log_head_config['head_' + key] = head_config[key]
 
-    def data_logging(self, data_dict):
-        mlflow.log_params(data_dict)
+    al_config = config['data'].pop('active_learning')
+    mlflow.log_params(al_config)
+    acquisition_config = config['model'].pop('acquisition')
+    mlflow.log_params(acquisition_config)
+    mlflow.log_params(log_fe_config)
+    mlflow.log_params(log_head_config)
+    mlflow.log_params(config['model'])
+    mlflow.log_params(config['data'])
 
-    def test_logging(self, metrics: Dict):
-        mlflow.log_metrics(metrics)
+def data_logging(data_dict):
+    mlflow.log_params(data_dict)
 
-    def log_artifacts(self):
-        mlflow.log_artifacts(globals.config['output_dir'])
+def log_and_store_metrics(dict: Dict, step):
+    mlflow.log_metrics(dict, step)
+    for key in dict.keys():
+        result_dataframe.loc[step, key] = dict[key]
+
+def log_dict_results(results, mode, step=None):
+
+    formatted_results = {}
+
+    for key in results.keys():
+        new_key = mode + '_' + key
+        formatted_results[new_key] = results[key]
+
+    log_and_store_metrics(formatted_results, step=step)
+
+def log_artifacts():
+    mlflow.log_artifacts(globals.config['output_dir'])
 
 
 class MLFlowCallback(tf.keras.callbacks.Callback):
@@ -64,11 +76,11 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         self.params['steps'] = 0
         self.model_converged = False
 
-    def on_batch_end(self, batch: int, logs=None):
-        if batch % 100 == 0:
-            current_step = int((self.finished_epochs * self.params['steps']) + batch)
-            metrics_dict = format_metrics_for_mlflow(logs.copy())
-            mlflow.log_metrics(metrics_dict, step=current_step)
+    # def on_batch_end(self, batch: int, logs=None):
+    #     if batch % 100 == 0:
+    #         current_step = int((self.finished_epochs * self.params['steps']) + batch)
+    #         metrics_dict = format_metrics_for_mlflow(logs.copy())
+    #         mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
         current_step = int(self.finished_epochs * self.params['steps'])
@@ -78,12 +90,13 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         metrics_for_monitoring = globals.config['model']['metrics_for_monitoring']
         acc_threshold = globals.config['model']['acquisition']['after_acc_above']
 
-        # If logging interval rached, calculate validation metrics
+        # If logging interval reached, calculate validation metrics
         if self.finished_epochs % globals.config['logging']['interval'] == 0:
             metrics_dict, _ = self.metric_calculator.calc_metrics(mode='val')
             mlflow.log_metrics(metrics_dict, step=current_step)
             mlflow.log_metric('finished_epochs', self.finished_epochs, step=current_step)
             mlflow.log_metric('acquisition_steps', self.acquisition_steps, step=current_step)
+            mlflow.log_metric("lr", float(K.get_value(self.model.optimizer.lr)), step=current_step)
 
             # If new best result, save model and set best epoch
             if metrics_dict[metrics_for_monitoring] > self.best_result:
@@ -94,20 +107,19 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
                 if globals.config["model"]["save_model"]:
                     print("\n New best model! Saving model..")
                     self._save_model('acquisition_' + str(self.acquisition_steps))
-                mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring])
-                mlflow.log_metric("saved_model_epoch", self.finished_epochs)
+                mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
+                mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
             # If not, check if model has converged
             else:
                 patience = globals.config['model']['acquisition']['after_epochs_of_no_improvement']
                 if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
                     # self.model.set_weights(self.best_weights)
-                    if globals.config['logging']['test_on_the_fly']:
-                        metrics_dict, _ = self.metric_calculator.calc_metrics(mode='test')
-                        mlflow.log_metrics(metrics_dict, step=self.acquisition_steps)
-                    self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
+                    # self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
                     old_lr = float(K.get_value(self.model.optimizer.lr))
-                    new_lr = old_lr * self.factor
+                    new_lr = old_lr * 0.5
                     K.set_value(self.model.optimizer.lr, new_lr)
+                    print('Reducing learning rate to: ' + str(new_lr))
+
 
     def data_acquisition_logging(self, acquisition_step, data_aquisition_dict):
         current_step = int(self.finished_epochs * self.params['steps'])

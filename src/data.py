@@ -19,7 +19,7 @@ class DataGenerator():
         Initialize data generator object
         :param config: dict containing config
         """
-        np.random.seed(globals.config['data']['random_seed'])
+        np.random.seed(globals.config['random_seed'])
         self.num_classes = globals.config["data"]["num_classes"]
         self.train_df = None
         self.val_df = None

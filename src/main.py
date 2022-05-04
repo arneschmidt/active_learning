@@ -1,5 +1,7 @@
 # TODO
-# adjust mlflow_log.py
+# change logging: train_acc/val_acc per epoch? test metric per acquisition step (labeled samples on x-axis)
+# check acquisition: acquisition scores are all zero!
+# check metrics of uncertainty (unc_logs)
 # save acquired patches for each step
 
 import argparse
@@ -11,7 +13,7 @@ from typing import Dict, Optional, Tuple
 import globals
 from data import DataGenerator
 from model_handler import ModelHandler
-from mlflow_log import MLFlowLogger
+from mlflow_log import start_logging, data_logging, log_artifacts
 
 
 def main():
@@ -22,8 +24,8 @@ def main():
     config = globals.config
 
     # Init logging with mlflow (see README)
-    logger = MLFlowLogger()
-    logger.config_logging()
+    start_logging()
+
 
     print("Create data generators..")
     data_gen = DataGenerator()
@@ -32,11 +34,11 @@ def main():
     model = ModelHandler(data_gen.get_number_of_training_points())
 
     print("Train")
-    logger.data_logging(data_gen.get_train_data_statistics())
+    data_logging(data_gen.get_train_data_statistics())
     model.train(data_gen)
 
     if config['logging']['log_artifacts']:
-        logger.log_artifacts()
+        log_artifacts()
 
 
 if __name__ == "__main__":
