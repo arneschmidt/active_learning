@@ -3,7 +3,7 @@ random_seed: 0
 model:
   test_on_the_fly: True
   batch_size: 16
-  epochs: 500
+  epochs: 1000
   learning_rate: 0.0001
   optimizer: adam # adam, sgd
   class_weighted_loss: True
@@ -38,7 +38,7 @@ model:
     ood_k_neighbors: 20
     aleatoric_factor: 0.5
     ood_factor: 2.0
-    after_epochs_of_no_improvement: 50
+    after_epochs_of_no_improvement: 100
     after_acc_above: 0.8
     wsi_selection: uncertainty_mean # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
 
@@ -58,7 +58,7 @@ data:
   active_learning:
     start:
       wsis_per_class: 1
-      labels_per_class_and_wsi: 5 # -1 (all) or number of labels per wsi
+      labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
     step:
       wsis: 5
       labels_per_wsi: 5
@@ -66,7 +66,8 @@ data:
       total_steps: 30
 
 logging:
-  log_artifacts: False
+  log_artifacts: True
+  save_images: True
   interval: 5
   test_on_the_fly: True
   run_name: efficientnetb1

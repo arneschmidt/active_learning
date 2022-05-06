@@ -6,10 +6,10 @@ import tensorflow as tf
 import tensorflow_addons as tfa
 import numpy as np
 import pandas as pd
-from mlflow_log import MLFlowCallback, log_and_store_metrics
+from mlflow_log import MLFlowCallback, log_and_store_metrics, log_artifacts
 from model_architecture import create_model
 from sklearn.neighbors import LocalOutlierFactor
-from utils.save_utils import save_dataframe_with_output, save_metrics_artifacts
+from utils.save_utils import save_dataframe_with_output, save_metrics_artifacts, save_acquired_images
 from metrics import MetricCalculator
 from typing import Dict, Optional, Tuple
 from data import DataGenerator
@@ -33,6 +33,7 @@ class ModelHandler:
             self._load_combined_model(config["model"]["load_model"])
         self.ood_estimator = None
         self._compile_model()
+        self.highest_unc_indices = {}
 
         print(self.model.layers[0].summary())
         print(self.model.layers[1].summary())
@@ -56,11 +57,11 @@ class ModelHandler:
         self.n_training_points = data_gen.get_number_of_training_points()
 
         for acquisition_step in range(total_acquisition_steps):
-            step = self.n_training_points
+
             self.acquisition_step = acquisition_step
             self.class_weights = data_gen.calculate_class_weights()
 
-            mlflow.log_metrics(data_gen.get_labeling_statistics(), step)
+            mlflow.log_metrics(data_gen.get_labeling_statistics(), self.n_training_points)
             # Optional: class-weighting based on groundtruth and estimated labels
             if globals.config["model"]["class_weighted_loss"]:
                 class_weights = self.class_weights
@@ -76,14 +77,20 @@ class ModelHandler:
                 callbacks=callbacks,
             )
             if globals.config['model']['test_on_the_fly']:
-                self.test(data_gen)
+                self.test(data_gen, step=self.n_training_points)
 
             if globals.config['data']['supervision'] == 'active_learning':
-                mlflow.log_metrics(self.uncertainty_logs, step)
+                mlflow.log_metrics(self.uncertainty_logs, self.n_training_points)
                 selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
                 self.n_training_points = data_gen.get_number_of_training_points()
                 self.update_model(self.n_training_points)
+
+                if globals.config['logging']['save_images']:
+                    save_acquired_images(data_gen, train_indices, self.highest_unc_indices, acquisition_step)
+
+            if globals.config['logging']['log_artifacts']:
+                log_artifacts()
 
     def test(self, data_gen: DataGenerator, step=None):
         """
@@ -334,6 +341,9 @@ class ModelHandler:
         aleatoric_unc = np.array(aleatoric_unc)
         epistemic_unc = np.array(epistemic_unc)
 
+        self.store_highest_uncertainty_indices(aleatoric_unc, 'aleatoric_unc')
+        self.store_highest_uncertainty_indices(epistemic_unc, 'epistemic_unc')
+
         self.uncertainty_logs['aleatoric_unc_mean'] = np.mean(aleatoric_unc)
         self.uncertainty_logs['aleatoric_unc_min'] = np.min(aleatoric_unc)
         self.uncertainty_logs['aleatoric_unc_max'] = np.max(aleatoric_unc)
@@ -351,6 +361,9 @@ class ModelHandler:
             in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
                                  (np.max(in_distribution_prob) - np.min(in_distribution_prob))
             ood_score = 1 - in_dist_normalized
+
+            self.store_highest_uncertainty_indices(ood_score, 'ood_score')
+
             self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
             self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
             self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
@@ -374,4 +387,9 @@ class ModelHandler:
         self.uncertainty_logs['acq_scores_max'] = np.max(acq_scores)
 
         return acq_scores
+
+    def store_highest_uncertainty_indices(self, unc, name):
+        n = 10
+        sorted_ids = np.argsort(unc)[::-1]
+        self.highest_unc_indices[name] = sorted_ids[0:n]
 

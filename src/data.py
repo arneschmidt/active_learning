@@ -35,7 +35,7 @@ class DataGenerator():
     def get_number_of_training_points(self):
         return int(np.sum(self.train_df['labeled']))
 
-    def query_from_oracle(self, selected_wsis, train_indices ):
+    def query_from_oracle(self, selected_wsis, train_indices):
         self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)

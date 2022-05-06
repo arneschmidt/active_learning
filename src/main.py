@@ -13,7 +13,7 @@ from typing import Dict, Optional, Tuple
 import globals
 from data import DataGenerator
 from model_handler import ModelHandler
-from mlflow_log import start_logging, data_logging, log_artifacts
+from mlflow_log import start_logging, data_logging
 
 
 def main():
@@ -37,8 +37,7 @@ def main():
     data_logging(data_gen.get_train_data_statistics())
     model.train(data_gen)
 
-    if config['logging']['log_artifacts']:
-        log_artifacts()
+
 
 
 if __name__ == "__main__":

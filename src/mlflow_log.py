@@ -37,13 +37,16 @@ def config_logging():
     mlflow.log_params(config['model'])
     mlflow.log_params(config['data'])
 
+
 def data_logging(data_dict):
     mlflow.log_params(data_dict)
+
 
 def log_and_store_metrics(dict: Dict, step):
     mlflow.log_metrics(dict, step)
     for key in dict.keys():
         result_dataframe.loc[step, key] = dict[key]
+
 
 def log_dict_results(results, mode, step=None):
 
@@ -55,8 +58,14 @@ def log_dict_results(results, mode, step=None):
 
     log_and_store_metrics(formatted_results, step=step)
 
+
 def log_artifacts():
-    mlflow.log_artifacts(globals.config['output_dir'])
+    mlflow.log_artifacts(globals.config['logging']['experiment_folder']) # change to experiment dict
+
+
+def save_results():
+    path = os.path.join(globals.config['logging']['experiment_folder'], 'results.csv')
+    result_dataframe.to_csv(path)
 
 
 class MLFlowCallback(tf.keras.callbacks.Callback):
