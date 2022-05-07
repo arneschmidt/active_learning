@@ -81,8 +81,7 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         self.best_result_epoch = 0
         self.best_weights = None
         self.metric_calculator = metric_calculator
-        self.params = {}
-        self.params['steps'] = 0
+        self.acquisition_steps = 0
         self.model_converged = False
 
     # def on_batch_end(self, batch: int, logs=None):
@@ -92,7 +91,7 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
     #         mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
-        current_step = int(self.finished_epochs * self.params['steps'])
+        current_step = int(self.finished_epochs * (self.acuisition_step+1))
         self.finished_epochs = self.finished_epochs + 1
         metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
@@ -129,11 +128,10 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
                     K.set_value(self.model.optimizer.lr, new_lr)
                     print('Reducing learning rate to: ' + str(new_lr))
 
-
-    def data_acquisition_logging(self, acquisition_step, data_aquisition_dict):
-        current_step = int(self.finished_epochs * self.params['steps'])
-        mlflow.log_metrics(data_aquisition_dict, step=current_step)
-        self.acquisition_steps = acquisition_step
+    def on_train_end(self, logs=None):
+        self.best_result_epoch = 0
+        self.best_result = 0.0
+        self.best_weights = None
 
     def _save_model(self, name: str):
         save_dir = os.path.join(globals.config["output_dir"], "models/" + name)

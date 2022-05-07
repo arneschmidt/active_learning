@@ -60,6 +60,7 @@ class ModelHandler:
 
             self.acquisition_step = acquisition_step
             self.class_weights = data_gen.calculate_class_weights()
+            mlflow_callback.acquisition_step = acquisition_step
 
             mlflow.log_metrics(data_gen.get_labeling_statistics(), self.n_training_points)
             # Optional: class-weighting based on groundtruth and estimated labels
