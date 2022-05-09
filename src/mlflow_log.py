@@ -81,7 +81,6 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         self.best_result_epoch = 0
         self.best_weights = None
         self.metric_calculator = metric_calculator
-        self.acquisition_steps = 0
         self.model_converged = False
 
     # def on_batch_end(self, batch: int, logs=None):
@@ -91,7 +90,7 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
     #         mlflow.log_metrics(metrics_dict, step=current_step)
 
     def on_epoch_end(self, epoch: int, logs=None):
-        current_step = int(self.finished_epochs * (self.acuisition_step+1))
+        current_step = int(self.finished_epochs * (self.acquisition_steps+1))
         self.finished_epochs = self.finished_epochs + 1
         metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
