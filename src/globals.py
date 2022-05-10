@@ -44,5 +44,11 @@ def init_global_config(args):
         config['logging']['experiment_folder'] = out_dir
         config['logging']['run_name'] = 'default'
 
-    shutil.rmtree(config['logging']['experiment_folder'])
+    for f in os.listdir(config['logging']['experiment_folder']):
+        path = os.path.join(config['logging']['experiment_folder'], f)
+
+        if os.path.isfile(path) and f != 'exp_config.yaml':
+            os.remove(path)
+        elif os.path.isdir(path):
+            shutil.rmtree(os.path.join(config['logging']['experiment_folder'], f))
 
