@@ -1,7 +1,7 @@
 data:
   dataset_name: panda
   dir: /data/BasesDeDatos/Panda/Panda_patches_256_resized/
-  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_256_resized/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_256_resized/dummy_200/
   artifact_dir: ./dataset_dependent/panda/
   image_target_size: [256, 256]
   num_classes: 4
