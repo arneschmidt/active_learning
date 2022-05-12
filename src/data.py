@@ -173,13 +173,18 @@ class DataGenerator():
         wsi_df = self.wsi_df
         wsi_names = np.unique(np.array(train_df['wsi']))
         out_dict = {}
-        out_dict['number_of_wsis'] = len(wsi_names)
-        out_dict['number_of_patches'] = len(train_df)
+        out_dict['number_of_wsis_train'] = len(wsi_names)
+        out_dict['number_of_patches_train'] = len(train_df)
         if globals.config['data']["dataset_type"] == "prostate_cancer":
-            out_dict['number_of_patches_NC'] = np.sum(train_df['class'] == '0')
-            out_dict['number_of_patches_GG3'] = np.sum(train_df['class'] == '1')
-            out_dict['number_of_patches_GG4'] = np.sum(train_df['class'] == '2')
-            out_dict['number_of_patches_GG5'] = np.sum(train_df['class'] == '3')
+            out_dict['number_of_patches_NC_train'] = np.sum(train_df['class'] == '0')
+            out_dict['number_of_patches_GG3_train'] = np.sum(train_df['class'] == '1')
+            out_dict['number_of_patches_GG4_train'] = np.sum(train_df['class'] == '2')
+            out_dict['number_of_patches_GG5_train'] = np.sum(train_df['class'] == '3')
+
+        out_dict['number_of_wsis_val'] = len(np.unique(np.array(self.val_df['wsi'])))
+        out_dict['number_of_patches_train'] = len(self.val_df)
+        out_dict['number_of_wsis_test'] = len(np.unique(np.array(self.test_df['wsi'])))
+        out_dict['number_of_patches_train'] = len(self.test_df)
 
         return out_dict
 
