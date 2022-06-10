@@ -117,19 +117,21 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
                 mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
                 mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
             # If not, check if model has converged
-            else:
-                patience = globals.config['model']['acquisition']['after_epochs_of_no_improvement']
-                if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
-                    # self.model.set_weights(self.best_weights)
-                    # self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
-                    old_lr = float(K.get_value(self.model.optimizer.lr))
-                    new_lr = old_lr * 0.5
-                    K.set_value(self.model.optimizer.lr, new_lr)
-                    print('Reducing learning rate to: ' + str(new_lr))
+            # else:
+            #     patience = globals.config['model']['acquisition']['after_epochs_of_no_improvement']
+            #     if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
+            #         # self.model.set_weights(self.best_weights)
+            #         # self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
+            #         old_lr = float(K.get_value(self.model.optimizer.lr))
+            #         new_lr = old_lr * 0.5
+            #         K.set_value(self.model.optimizer.lr, new_lr)
+            #         print('Reducing learning rate to: ' + str(new_lr))
 
     def on_train_end(self, logs=None):
         self.best_result_epoch = 0
         self.best_result = 0.0
+        if self.best_weights is not None:
+            self.model.set_weights(self.best_weights)
         self.best_weights = None
 
     def _save_model(self, name: str):

@@ -1,8 +1,9 @@
 # TODO
-# change logging: train_acc/val_acc per epoch? test metric per acquisition step (labeled samples on x-axis)
-# check acquisition: acquisition scores are all zero!
-# check metrics of uncertainty (unc_logs)
-# save acquired patches for each step
+# fix bug of logging _1, _2, _3 metrics
+# repatch panda
+# take best validation model
+# print acquisition score and entropy
+
 
 import argparse
 import os

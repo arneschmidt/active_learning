@@ -34,6 +34,7 @@ class ModelHandler:
         self.ood_estimator = None
         self._compile_model()
         self.highest_unc_indices = {}
+        self.highest_unc_values = {}
 
         print(self.model.layers[0].summary())
         print(self.model.layers[1].summary())
@@ -88,7 +89,7 @@ class ModelHandler:
                 self.update_model(self.n_training_points)
 
                 if globals.config['logging']['save_images']:
-                    save_acquired_images(data_gen, train_indices, self.highest_unc_indices, acquisition_step)
+                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, acquisition_step)
 
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
@@ -383,6 +384,7 @@ class ModelHandler:
 
         acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
 
+        self.store_highest_uncertainty_indices(acq_scores, 'acq_scores')
         self.uncertainty_logs['acq_scores_mean'] = np.mean(acq_scores)
         self.uncertainty_logs['acq_scores_min'] = np.min(acq_scores)
         self.uncertainty_logs['acq_scores_max'] = np.max(acq_scores)
@@ -393,4 +395,5 @@ class ModelHandler:
         n = 10
         sorted_ids = np.argsort(unc)[::-1]
         self.highest_unc_indices[name] = sorted_ids[0:n]
+        self.highest_unc_values[name] = unc[sorted_ids[0:n]]
 

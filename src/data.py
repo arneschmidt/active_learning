@@ -9,7 +9,6 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from utils.data_utils import extract_df_info, extract_wsi_df_info, get_start_label_ids
 
 
-
 class DataGenerator():
     """
     Object to obtain the patches and labels.
