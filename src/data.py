@@ -1,24 +1,25 @@
 import os
+import globals
 import mxnet as mx
 import pandas as pd
 import numpy as np
 from skimage.filters import gaussian
+from sklearn.utils import class_weight
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from utils.data_utils import extract_df_info, extract_wsi_df_info, get_start_label_ids
-from typing import Dict, Optional, Tuple
 
 
 class DataGenerator():
     """
     Object to obtain the patches and labels.
     """
-    def __init__(self, config: Dict):
+    def __init__(self):
         """
         Initialize data generator object
         :param config: dict containing config
         """
-        np.random.seed(config['data']['random_seed'])
-        self.config = config
+        np.random.seed(globals.config['random_seed'])
+        self.num_classes = globals.config["data"]["num_classes"]
         self.train_df = None
         self.val_df = None
         self.test_df = None
@@ -33,7 +34,7 @@ class DataGenerator():
     def get_number_of_training_points(self):
         return int(np.sum(self.train_df['labeled']))
 
-    def query_from_oracle(self, selected_wsis, train_indices ):
+    def query_from_oracle(self, selected_wsis, train_indices):
         self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)
@@ -41,24 +42,23 @@ class DataGenerator():
                                                                             image_augmentation=False)
 
     def _load_dataframes(self):
-        wsi_df = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "wsi_labels.csv"))
+        wsi_df = pd.read_csv(os.path.join(globals.config['data']["data_split_dir"], "wsi_labels.csv"))
         wsi_df = extract_wsi_df_info(wsi_df)
         self.wsi_df = wsi_df
-        if self.config['model']['mode'] != 'test':
-            train_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "train_patches.csv"))
-            self.train_df = extract_df_info(train_df_raw, self.wsi_df, self.config['data'], split='train')
-        val_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "val_patches.csv"))
-        self.val_df = extract_df_info(val_df_raw, self.wsi_df, self.config['data'], split='val')
-        if self.config['model']['mode'] != 'train' or self.config['logging']['test_on_the_fly']:
-            test_df_raw = pd.read_csv(os.path.join(self.config['data']["data_split_dir"], "test_patches.csv"))
-            self.test_df = extract_df_info(test_df_raw, self.wsi_df, self.config['data'], split='test')
+        train_df_raw = pd.read_csv(os.path.join(globals.config['data']["data_split_dir"], "train_patches.csv"))
+        self.train_df = extract_df_info(train_df_raw, self.wsi_df, globals.config['data'], split='train')
+        val_df_raw = pd.read_csv(os.path.join(globals.config['data']["data_split_dir"], "val_patches.csv"))
+        self.val_df = extract_df_info(val_df_raw, self.wsi_df, globals.config['data'], split='val')
+        if globals.config['logging']['test_on_the_fly']:
+            test_df_raw = pd.read_csv(os.path.join(globals.config['data']["data_split_dir"], "test_patches.csv"))
+            self.test_df = extract_df_info(test_df_raw, self.wsi_df, globals.config['data'], split='test')
 
 
     def _initialize_data_generators(self):
         # init some labeled patches for active learning
-        if self.config['model']['mode'] == 'train' and self.config['data']['supervision'] == 'active_learning':
+        if globals.config['data']['supervision'] == 'active_learning':
             self.train_df['labeled'] = False
-            ids = get_start_label_ids(self.train_df, self.wsi_df, self.config['data'])
+            ids = get_start_label_ids(self.train_df, self.wsi_df, globals.config['data'])
             self.train_df['labeled'].loc[ids] = True
             self.train_generator_unlabeled = self.data_generator_from_dataframe(
                 self.train_df.loc[np.logical_not(self.train_df['labeled'])], image_augmentation=False)
@@ -85,32 +85,32 @@ class DataGenerator():
             return None
 
         def hue_jitter(img):
-            if self.config['data']['augmentation']["hue"] > 0.0:
-                aug = mx.image.HueJitterAug(hue=self.config['data']['augmentation']["hue"])
+            if globals.config['data']['augmentation']["hue"] > 0.0:
+                aug = mx.image.HueJitterAug(hue=globals.config['data']['augmentation']["hue"])
                 img = aug(img)
             return img
 
         def saturation_jitter(img):
-            if self.config['data']['augmentation']["saturation"] > 0.0:
-                aug = mx.image.SaturationJitterAug(saturation=self.config['data']['augmentation']["saturation"])
+            if globals.config['data']['augmentation']["saturation"] > 0.0:
+                aug = mx.image.SaturationJitterAug(saturation=globals.config['data']['augmentation']["saturation"])
                 img = aug(img)
             return img
 
         def contrast_jitter(img):
-            if self.config['data']['augmentation']["contrast"] > 0.0:
-                aug = mx.image.ContrastJitterAug(contrast=self.config['data']['augmentation']["contrast"])
+            if globals.config['data']['augmentation']["contrast"] > 0.0:
+                aug = mx.image.ContrastJitterAug(contrast=globals.config['data']['augmentation']["contrast"])
                 img = aug(img)
             return img
 
         def brightness_jitter(img):
-            if self.config['data']['augmentation']["contrast"] > 0.0:
-                aug = mx.image.BrightnessJitterAug(brightness=self.config['data']['augmentation']["brightness"])
+            if globals.config['data']['augmentation']["contrast"] > 0.0:
+                aug = mx.image.BrightnessJitterAug(brightness=globals.config['data']['augmentation']["brightness"])
                 img = aug(img)
             return img
 
         def gaussian_blurr(img):
-            if self.config['data']['augmentation']["blur"] > 0.0:
-                sigma = np.random.uniform(0, self.config['data']['augmentation']["blur"], 1)
+            if globals.config['data']['augmentation']["blur"] > 0.0:
+                sigma = np.random.uniform(0, globals.config['data']['augmentation']["blur"], 1)
                 img = gaussian(img, sigma=sigma[0], multichannel=True)
             return img
 
@@ -126,10 +126,10 @@ class DataGenerator():
 
         if image_augmentation:
             datagen = ImageDataGenerator(
-                width_shift_range=self.config['data']['augmentation']["width_shift_range"],
-                height_shift_range=self.config['data']['augmentation']["height_shift_range"],
-                channel_shift_range=self.config['data']['augmentation']["channel_shift_range"],
-                zoom_range=self.config['data']['augmentation']["zoom_range"],
+                width_shift_range=globals.config['data']['augmentation']["width_shift_range"],
+                height_shift_range=globals.config['data']['augmentation']["height_shift_range"],
+                channel_shift_range=globals.config['data']['augmentation']["channel_shift_range"],
+                zoom_range=globals.config['data']['augmentation']["zoom_range"],
                 rotation_range=360,
                 fill_mode='constant',
                 horizontal_flip=True,
@@ -141,7 +141,7 @@ class DataGenerator():
         if target_mode == 'class':
             y_col = 'class'
             class_mode = 'categorical'
-            classes = [str(i) for i in range(self.config['data']["num_classes"])]
+            classes = [str(i) for i in range(globals.config['data']["num_classes"])]
         else:
             y_col = 'index'
             class_mode = None
@@ -149,15 +149,15 @@ class DataGenerator():
 
         generator = datagen.flow_from_dataframe(
             dataframe=dataframe,
-            directory=self.config['data']["dir"],
+            directory=globals.config['data']["dir"],
             x_col="image_path",
             y_col=y_col,
-            target_size=self.config['data']["image_target_size"],
-            batch_size=self.config['model']["batch_size"],
+            target_size=globals.config['data']["image_target_size"],
+            batch_size=globals.config['model']["batch_size"],
             shuffle=shuffle,
             classes=classes,
             class_mode=class_mode,
-            # save_to_dir=self.config['data']['artifact_dir'] + "image_augmentation",
+            # save_to_dir=globals.config['data']['artifact_dir'] + "image_augmentation",
             # save_format='jpeg'
             )
 
@@ -172,13 +172,18 @@ class DataGenerator():
         wsi_df = self.wsi_df
         wsi_names = np.unique(np.array(train_df['wsi']))
         out_dict = {}
-        out_dict['number_of_wsis'] = len(wsi_names)
-        out_dict['number_of_patches'] = len(train_df)
-        if self.config['data']["dataset_type"] == "prostate_cancer":
-            out_dict['number_of_patches_NC'] = np.sum(train_df['class'] == '0')
-            out_dict['number_of_patches_GG3'] = np.sum(train_df['class'] == '1')
-            out_dict['number_of_patches_GG4'] = np.sum(train_df['class'] == '2')
-            out_dict['number_of_patches_GG5'] = np.sum(train_df['class'] == '3')
+        out_dict['number_of_wsis_train'] = len(wsi_names)
+        out_dict['number_of_patches_train'] = len(train_df)
+        if globals.config['data']["dataset_type"] == "prostate_cancer":
+            out_dict['number_of_patches_NC_train'] = np.sum(train_df['class'] == '0')
+            out_dict['number_of_patches_GG3_train'] = np.sum(train_df['class'] == '1')
+            out_dict['number_of_patches_GG4_train'] = np.sum(train_df['class'] == '2')
+            out_dict['number_of_patches_GG5_train'] = np.sum(train_df['class'] == '3')
+
+        out_dict['number_of_wsis_val'] = len(np.unique(np.array(self.val_df['wsi'])))
+        out_dict['number_of_patches_train'] = len(self.val_df)
+        out_dict['number_of_wsis_test'] = len(np.unique(np.array(self.test_df['wsi'])))
+        out_dict['number_of_patches_train'] = len(self.test_df)
 
         return out_dict
 
@@ -192,3 +197,20 @@ class DataGenerator():
         out_dict['labeled_patches_GG4'] = np.sum(labeled_df['class'] == '2')
         out_dict['labeled_patches_GG5'] = np.sum(labeled_df['class'] == '3')
         return out_dict
+    
+    def calculate_class_weights(self):
+        """
+        Calculate class weights based on gt, pseudo and soft labels.
+        :param training_targets: gt, pseudo and soft labels (fused)
+        :return: class weight dict
+        """
+        labels = np.array(self.train_df['class'].loc[self.train_df['labeled']], dtype=int)
+        classes = np.arange(0,self.num_classes)
+        class_weights_array = class_weight.compute_class_weight(
+            class_weight='balanced',
+            classes=classes,
+            y=labels)
+        class_weights = {}
+        for class_id in classes:
+            class_weights[class_id] = class_weights_array[class_id]
+        return class_weights

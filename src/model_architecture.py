@@ -10,30 +10,20 @@ from tensorflow.keras.applications.efficientnet import EfficientNetB0, Efficient
 from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense, Conv2D, Dropout, MaxPool2D, Flatten, GlobalMaxPool2D, SeparableConv2D
+from tensorflow_probability.python.layers import util as tfp_layers_util
 
+import globals
 
-def create_model(config: Dict, num_classes: int, num_training_points: int):
-    """
-    Initialize classification model consisting of a feature extractor and a classification head.
-    :param config: dict holding config parameters
-    :param num_classes: number of classes
-    :param num_training_points: number of training points
-    :return: keras model
-    """
-    feature_extractor = create_feature_extactor(config)
-    head = create_head(config, num_classes, num_training_points)
+def create_model(num_training_points: int):
+    feature_extractor = create_feature_extactor()
+    head = create_head(num_training_points)
     
     model = Sequential([feature_extractor, head])
     return model
 
-def create_feature_extactor(config: Dict):
-    """
-    Create the feature extractor based on pretrained existing keras models.
-    :param config: dict holding the model and data config
-    :return: feature extractor model
-    """
-    input_shape = (config["data"]["image_target_size"][0], config["data"]["image_target_size"][1], 3)
-    feature_extractor_type = config["model"]["feature_extractor"]["type"]
+def create_feature_extactor():
+    input_shape = (globals.config["data"]["image_target_size"][0], globals.config["data"]["image_target_size"][1], 3)
+    feature_extractor_type = globals.config["model"]["feature_extractor"]["type"]
 
     weights = "imagenet"
     feature_extractor = Sequential(name='feature_extractor')
@@ -77,164 +67,75 @@ def create_feature_extactor(config: Dict):
     else:
         raise Exception("Choose valid model architecture!")
 
-    dropout_rate = config["model"]["feature_extractor"]["dropout"]
+    dropout_rate = globals.config["model"]["feature_extractor"]["dropout"]
     if dropout_rate > 0.0:
         feature_extractor.add(Dropout(rate=dropout_rate))
 
-    if config["model"]["feature_extractor"]["global_max_pooling"]:
+    if globals.config["model"]["feature_extractor"]["global_max_pooling"]:
         feature_extractor.add(GlobalMaxPool2D())
-    if config["model"]["feature_extractor"]["num_output_features"] > 0:
-        activation = config["model"]["feature_extractor"]["output_activation"]
-        feature_extractor.add(Dense(config["model"]["feature_extractor"]["num_output_features"], activation=activation))
+    if globals.config["model"]["feature_extractor"]["num_output_features"] > 0:
+        activation = globals.config["model"]["feature_extractor"]["output_activation"]
+        feature_extractor.add(Dense(globals.config["model"]["feature_extractor"]["num_output_features"], activation=activation))
     # feature_extractor.build(input_shape=input_shape)
     return feature_extractor
 
 
-def create_head(config: Dict, num_classes: int, num_training_points: int):
-    """
-    Create classification head on top of the models features.
-    :param config: dict holding the models config
-    :param num_classes: number of classes
-    :param num_training_points: number of trianing points
-    :return: model head (keras model)
-    """
-    head_type = config["model"]["head"]["type"]
-    mode = config["model"]["mode"]
-    if head_type == "deterministic":
-        hidden_units = config["model"]["head"]["deterministic"]["number_hidden_units"]
-        dropout_rate = config["model"]["head"]["deterministic"]["dropout"]
-        head = Sequential(name='head')
-        head.add(Dropout(rate=dropout_rate))
-        if hidden_units > 0 :
+def create_head(num_training_points: int):
+        config = globals.config
+        head_type = config["model"]["head"]["type"]
+
+        num_classes = config['data']['num_classes']
+        if head_type == "deterministic":
+            hidden_units = config["model"]["head"]["deterministic"]["number_hidden_units"]
+            dropout_rate = config["model"]["head"]["deterministic"]["dropout"]
+            head = Sequential(name='head')
+            head.add(Dropout(rate=dropout_rate))
             head.add(Dense(hidden_units, activation="relu"))
-        head.add(Dense(int(num_classes), activation="softmax"))
+            if config["model"]["head"]["deterministic"]["extra_layer"]:
+                head.add(Dense(hidden_units, activation="relu"))
+            head.add(Dense(int(num_classes), activation="softmax"))
 
-    elif head_type == "bnn":
-        number_hidden_units = config["model"]["head"]["bnn"]["number_hidden_units"]
-        kl_factor = config["model"]["head"]["bnn"]["kl_loss_factor"]
-        tfd = tfp.distributions
-        # scaling of KL divergence to batch is included already, scaling to dataset size needs to be done
-        kl_divergence_function = (lambda q, p, _: tfd.kl_divergence(q, p)* kl_factor /  # pylint: disable=g-long-lambda
-                                                  tf.cast(num_training_points, dtype=tf.float32))
+        elif head_type == "bnn":
+            number_hidden_units = config["model"]["head"]["bnn"]["number_hidden_units"]
+            activation = 'relu'
+            weight_std = config["model"]["head"]["bnn"]["weight_std"]
+            weight_std_softplusinv = tfp.math.softplus_inverse(weight_std)
 
-        if mode == 'test':
-            tensor_fn = (lambda d: d.mean())
-        else:
+            kl_factor =  tf.Variable(initial_value=config["model"]["head"]["bnn"]["kl_loss_factor"], trainable=False, dtype=tf.float32)
+            tfd = tfp.distributions
+            # scaling of KL divergence to batch is included already, scaling to dataset size needs to be done
+            kl_divergence_function = (lambda q, p, _: tfd.kl_divergence(q, p) * tf.cast(kl_factor / num_training_points, dtype=tf.float32))   #  tf.cast(num_training_points, dtype=tf.float32))
+
+            kernel_posterior_fn = tfp_layers_util.default_mean_field_normal_fn(
+                untransformed_scale_initializer=tf.keras.initializers.RandomNormal(mean=weight_std_softplusinv, stddev=0.1)) # softplus transformed init param
+
             tensor_fn = (lambda d: d.sample())
 
-        head = tf.keras.Sequential([
-            tfp.layers.DenseReparameterization(activation=tf.nn.relu, units=number_hidden_units,
-                                               kernel_divergence_fn=kl_divergence_function,
-                                               bias_divergence_fn=kl_divergence_function,
-                                               kernel_posterior_tensor_fn=tensor_fn,
-                                               bias_posterior_tensor_fn=tensor_fn
-                                               ),
-            tfp.layers.DenseReparameterization(activation="softmax", units=int(num_classes),
-                                               kernel_divergence_fn=kl_divergence_function,
-                                               bias_divergence_fn=kl_divergence_function,
-                                               kernel_posterior_tensor_fn=tensor_fn,
-                                               bias_posterior_tensor_fn=tensor_fn
-                                               ),
-        ], name='head')
-    elif head_type == "gp":
-        num_inducing_points = config["model"]["head"]["gp"]["inducing_points"]
-        features = config["model"]["feature_extractor"]["num_output_features"]
+            layers = [tfp.layers.DenseReparameterization(activation=activation, units=number_hidden_units,
+                                                         kernel_posterior_fn=kernel_posterior_fn,
+                                                         kernel_divergence_fn=kl_divergence_function,
+                                                         bias_divergence_fn=kl_divergence_function,
+                                                         kernel_posterior_tensor_fn=tensor_fn,
+                                                         bias_posterior_tensor_fn=tensor_fn
+                                                         )]
+            if config["model"]["head"]["bnn"]["extra_layer"]:
+                layers.append(tfp.layers.DenseReparameterization(activation=activation, units=number_hidden_units,
+                                                                 kernel_posterior_fn=kernel_posterior_fn,
+                                                                 kernel_divergence_fn=kl_divergence_function,
+                                                                 bias_divergence_fn=kl_divergence_function,
+                                                                 kernel_posterior_tensor_fn=tensor_fn,
+                                                                 bias_posterior_tensor_fn=tensor_fn
+                                                                 ))
+            layers.append(tfp.layers.DenseReparameterization(activation="softmax", units=int(num_classes),
+                                                             kernel_posterior_fn=kernel_posterior_fn,
+                                                             kernel_divergence_fn=kl_divergence_function,
+                                                             bias_divergence_fn=kl_divergence_function,
+                                                             kernel_posterior_tensor_fn=tensor_fn,
+                                                             bias_posterior_tensor_fn=tensor_fn
+                                                             ))
 
-        def mc_sampling(x):
-            samples = x.sample(20)
-            return samples
-
-        def mc_integration(x):
-            out = tf.math.reduce_mean(x, axis=0)
-            return out
-
-        if mode == 'test':
-            tensor_fn = tfp.distributions.Distribution.mean
+            head = tf.keras.Sequential(layers, name='head')
         else:
-            tensor_fn = tfp.distributions.Distribution.sample
-        if features < 1:
-            raise Exception('Please set the num_output_features > 0 when using Gaussian processes.')
-        kernel = RBFKernelFn(trainable=config["model"]["head"]["gp"]["kernel_trainable"],
-                            amplitude=config["model"]["head"]["gp"]["kernel_amplitude"],
-                             length_scale=config["model"]["head"]["gp"]["kernel_length_scale"])
-        head = tf.keras.Sequential([
-            tf.keras.layers.Input(shape=[features]), #, batch_size=config["model"]["batch_size"]),
-            tfp.layers.VariationalGaussianProcess(
-                num_inducing_points=num_inducing_points,
-                kernel_provider=kernel,
-                event_shape=[num_classes], # output dimensions
-                inducing_index_points_initializer=tf.keras.initializers.RandomUniform(
-                    minval=0.3, maxval=0.7, seed=None
-                ),
-                jitter=10e-3,
-                convert_to_tensor_fn=tensor_fn,
-                variational_inducing_observations_scale_initializer=tf.initializers.constant(
-                    0.01 * np.tile(np.eye(num_inducing_points, num_inducing_points), (num_classes, 1, 1))),
+            raise Exception("Choose valid model head!")
+        return head
 
-                # unconstrained_observation_noise_variance_initializer=(
-                #     tf.constant_initializer(np.array(0.54).astype(np.float32))),
-            ),
-            tf.keras.layers.Lambda(mc_sampling),
-            tf.keras.layers.Softmax(),
-            tf.keras.layers.Lambda(mc_integration)
-        ], name='head')
-        head.add_weight(name='kl_weight',
-                        shape=(),
-                        dtype=tf.float32,
-                        initializer=tf.constant_initializer(value=1.0),
-                        trainable=False)
-        head.add_loss(kl_loss(head))
-        head.build()
-    else:
-        raise Exception("Choose valid model head!")
-    return head
-
-def kl_loss(head):
-    # tf.print('kl_div: ', kl_div)
-    def _kl_loss():
-        kl_weight = head.variables[7]
-        kl_div = tf.reduce_sum(head.layers[0].submodules[5].surrogate_posterior_kl_divergence_prior())
-
-        loss = tf.multiply(kl_weight, kl_div)
-        # tf.print('kl_weight: ', kl_weight)
-        # tf.print('kl_loss: ', loss)
-        # # tf.print('u_var: ', head.variables[4])
-        return loss
-
-    return _kl_loss
-
-class RBFKernelFn(tf.keras.layers.Layer):
-    """
-    RGF kernel for Gaussian processes.
-    """
-    def __init__(self, trainable=False, length_scale =0.1, amplitude=1.0):
-        super(RBFKernelFn, self).__init__()
-        self._amplitude_var = self.add_variable(
-            initializer=tf.constant_initializer(0.0),
-            name='amplitude')
-        self._length_scale_var = self.add_variable(
-            initializer=tf.constant_initializer(0.0),
-            name='length_scale')
-        self.trainable = trainable
-        self.fixed_ls = length_scale
-        self.fixed_ampl = amplitude
-
-
-    def call(self, x):
-        # Never called -- this is just a layer so it can hold variables
-        # in a way Keras understands.
-        return x
-
-    @property
-    def kernel(self):
-        if self.trainable:
-            amplitude = tf.nn.softplus(1.0 * self._amplitude_var)
-            length_scale = tf.nn.softplus(1.0 * self._length_scale_var)
-        else:
-            amplitude = self.fixed_ampl
-            length_scale = self.fixed_ls
-
-        return tfp.math.psd_kernels.ExponentiatedQuadratic(
-            amplitude= amplitude ,# tf.nn.softplus(0.1 * self._amplitude), # 0.1
-            length_scale= length_scale #tf.nn.softplus(10.0 * self._length_scale) # 5.
-        )

@@ -9,8 +9,8 @@ class MetricCalculator():
     """
     Object that takes care of the metric calculation for training and testing.
     """
-    def __init__(self, model, data_gen, config):
-        self.model = model
+    def __init__(self, model_handler, data_gen, config):
+        self.model_handler = model_handler
         self.data_gen = data_gen
         self.dataset_type = config['data']['dataset_type']
         self.num_classes = config['data']['num_classes']
@@ -55,15 +55,14 @@ class MetricCalculator():
         Obtain model predictions for validation and/or test data.
         :return: val_predictions, test_predictions
         """
-        model = self.model
+        model_handler = self.model_handler
         data_gen = self.data_gen
-        batch_size = data_gen.validation_generator.batch_size
         if split == 'val':
             val_gen = self.val_gen
-            predictions = model.predict(val_gen, batch_size=batch_size, steps=np.ceil(val_gen.n / batch_size), verbose=1)
+            predictions = model_handler.predict(val_gen)
         else:
             test_gen = self.test_gen
-            predictions = model.predict(test_gen, batch_size=batch_size, steps=np.ceil(test_gen.n / batch_size), verbose=1)
+            predictions = model_handler.predict(test_gen)
 
         return predictions
 

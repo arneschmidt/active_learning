@@ -1,90 +1,52 @@
+# TODO
+# fix bug of logging _1, _2, _3 metrics
+# repatch panda
+# take best validation model
+# print acquisition score and entropy
+
+
 import argparse
 import os
 import collections
 import yaml
 import tensorflow as tf
 from typing import Dict, Optional, Tuple
+import globals
 from data import DataGenerator
-from model import Model
-from mlflow_log import MLFlowLogger
+from model_handler import ModelHandler
+from mlflow_log import start_logging, data_logging
 
 
-def main(config: Dict):
+def main():
     # Only necessary if certain GPUs are used (like nvidia 2060rtx)
     devices = tf.config.experimental.list_physical_devices('GPU')
     tf.config.experimental.set_memory_growth(devices[0], True)
 
+    config = globals.config
+
     # Init logging with mlflow (see README)
-    logger = MLFlowLogger(config)
-    logger.config_logging()
+    start_logging()
+
 
     print("Create data generators..")
-    data_gen = DataGenerator(config)
+    data_gen = DataGenerator()
 
     print("Load classification model")
-    model = Model(config, data_gen.get_number_of_training_points())
+    model = ModelHandler(data_gen.get_number_of_training_points())
 
-    if config["model"]["mode"] == "train":
-        print("Train")
-        logger.data_logging(data_gen.get_train_data_statistics())
-        model.train(data_gen)
-    elif config["model"]["mode"] == "test":
-        print("Test")
-        metrics = model.test(data_gen)
-        logger.test_logging(metrics)
-    elif config["model"]["mode"] == "predict":
-        print("Predict")
-        model.predict(data_gen)
-    elif config["model"]["mode"] == "predict_features":
-        model.predict_features(data_gen)
-
-    if config['logging']['log_artifacts']:
-        logger.log_artifacts()
+    print("Train")
+    data_logging(data_gen.get_train_data_statistics())
+    model.train(data_gen)
 
 
-def config_update(orig_dict, new_dict):
-    for key, val in new_dict.items():
-        if isinstance(val, collections.Mapping):
-            tmp = config_update(orig_dict.get(key, { }), val)
-            orig_dict[key] = tmp
-        else:
-            orig_dict[key] = new_dict[key]
-    return orig_dict
-
-
-def load_configs(args):
-    with open(args.default_config) as file:
-        config = yaml.full_load(file)
-    with open(config["data"]["dataset_config"]) as file:
-        config_data_dependent = yaml.full_load(file)
-
-    config = config_update(config, config_data_dependent)
-
-    if args.experiment_config != 'None':
-        with open(args.experiment_config) as file:
-            exp_config = yaml.full_load(file)
-        config = config_update(config, exp_config)
-
-    return config
 
 
 if __name__ == "__main__":
-    print('Load configuration')
     parser = argparse.ArgumentParser(description="Cancer Classification")
     parser.add_argument("--default_config", "-dc", type=str, default="./config.yaml",
                         help="Config path (yaml file expected) to default config.")
-    parser.add_argument("--experiment_config", "-ec", type=str, default="None",
-                        help="Config path to experiment config. Parameters will override defaults. Optional.")
+    parser.add_argument("--experiment_folder", "-ef", type=str, default="None",
+                        help="Config path to experiment folder. Parameters will override defaults. Optional.")
     args = parser.parse_args()
-    config = load_configs(args)
-
-    if config['logging']['run_name'] == 'auto':
-        config['logging']['run_name'] = args.experiment_config.split('/')[-2]
-
-
-    print('Create output folder')
-    config['output_dir'] = os.path.join(config['data']['artifact_dir'], config['logging']['run_name'])
-    os.makedirs(config['output_dir'], exist_ok=True)
-    print('Output will be written to: ', config['output_dir'])
-
-    main(config)
+    globals.init_global_config(args)
+    main()
