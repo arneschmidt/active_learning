@@ -22,61 +22,107 @@ def create_model(num_training_points: int):
     return model
 
 def create_feature_extactor():
-    input_shape = (globals.config["data"]["image_target_size"][0], globals.config["data"]["image_target_size"][1], 3)
     feature_extractor_type = globals.config["model"]["feature_extractor"]["type"]
-
+    multiscale = globals.config["model"]["feature_extractor"]["multiscale"]
+    image_size = globals.config["data"]["image_target_size"]
     weights = "imagenet"
-    feature_extractor = Sequential(name='feature_extractor')
+
+    input = tf.keras.layers.Input(shape=(image_size[0], image_size[1], 3))
+
+    if not multiscale:
+        input_shape = (image_size[0], image_size[1], 3)
+        x_complete = input
+        x_center = None
+    else:
+        input_shape = (int(image_size[0] / 2), int(image_size[1] / 2), 3)
+        x_complete = tf.keras.layers.experimental.preprocessing.Resizing(input_shape[0], input_shape[1])(input)
+        x_center = tf.keras.layers.Cropping2D(cropping=int(image_size[0] / 4))(input)
+
     if feature_extractor_type == "mobilenetv2":
-        feature_extractor.add(MobileNetV2(include_top=False, input_shape=input_shape, weights=None, pooling='avg'))
+        x = MobileNetV2(include_top=False, input_shape=input_shape, weights=None, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = MobileNetV2(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb0":
-        feature_extractor.add(EfficientNetB0(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB0(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB0(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb1":
-        feature_extractor.add(EfficientNetB1(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB1(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB1(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb2":
-        feature_extractor.add(EfficientNetB2(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB2(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB2(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb3":
-        feature_extractor.add(EfficientNetB3(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB3(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB3(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb4":
-        feature_extractor.add(EfficientNetB4(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB4(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB4(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb5":
-        feature_extractor.add(EfficientNetB5(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB5(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB5(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb6":
-        feature_extractor.add(EfficientNetB6(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB6(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB6(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "efficientnetb7":
-        feature_extractor.add(EfficientNetB7(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
+        x = EfficientNetB7(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = EfficientNetB7(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     elif feature_extractor_type == "resnet50":
-        feature_extractor.add(ResNet50(include_top=False, input_shape=input_shape, weights=weights, pooling='avg'))
-    elif feature_extractor_type == "simple_cnn":
-        feature_extractor.add(tf.keras.layers.Input(shape=input_shape))
-        feature_extractor.add(SeparableConv2D(64, kernel_size=3, activation='relu', input_shape=input_shape))
-        for i in range(3):
-            feature_extractor.add(SeparableConv2D(32, kernel_size=3, activation='relu'))
-            feature_extractor.add(SeparableConv2D(32, kernel_size=3, activation='relu'))
-            feature_extractor.add(MaxPool2D(pool_size=(2, 2)))
-        feature_extractor.add(SeparableConv2D(32, kernel_size=3, activation='relu'))
-        feature_extractor.add(SeparableConv2D(32, kernel_size=3, activation='relu'))
-    elif feature_extractor_type == "fsconv":
-        feature_extractor.add(tf.keras.layers.Input(shape=input_shape))
-        feature_extractor.add(Conv2D(32, kernel_size=3, activation='relu'))
-        feature_extractor.add(MaxPool2D(strides=(2, 2)))
-        feature_extractor.add(Conv2D(124, kernel_size=3, activation='relu'))
-        feature_extractor.add(MaxPool2D(strides=(2, 2)))
-        feature_extractor.add(Conv2D(512, kernel_size=3, activation='relu'))
-        feature_extractor.add(MaxPool2D(strides=(2, 2)))
+        x = ResNet50(include_top=False, input_shape=input_shape, weights=weights, pooling='avg')(x_complete)
+        if multiscale:
+            center_model = ResNet50(include_top=False, input_shape=input_shape, weights=None, pooling='avg')
+            center_model._name = 'center_cnn'
+            x_center = center_model(x_center)
+            x = tf.concat([x_center, x], axis=1)
     else:
         raise Exception("Choose valid model architecture!")
 
     dropout_rate = globals.config["model"]["feature_extractor"]["dropout"]
     if dropout_rate > 0.0:
-        feature_extractor.add(Dropout(rate=dropout_rate))
+        x = Dropout(rate=dropout_rate)(x)
 
     if globals.config["model"]["feature_extractor"]["global_max_pooling"]:
-        feature_extractor.add(GlobalMaxPool2D())
+        x = GlobalMaxPool2D()(x)
     if globals.config["model"]["feature_extractor"]["num_output_features"] > 0:
         activation = globals.config["model"]["feature_extractor"]["output_activation"]
-        feature_extractor.add(Dense(globals.config["model"]["feature_extractor"]["num_output_features"], activation=activation))
+        x = Dense(globals.config["model"]["feature_extractor"]["num_output_features"], activation=activation)(x)
     # feature_extractor.build(input_shape=input_shape)
+    output = x
+    feature_extractor = tf.keras.Model(inputs=input, outputs=output, name="feature_extractor")
     return feature_extractor
 
 
