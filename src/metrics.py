@@ -41,6 +41,7 @@ class MetricCalculator():
         if self.metrics_patch_level:
             metrics.update(self.calc_patch_level_metrics(test_predictions, test_dataframe))
         if self.metrics_wsi_level:
+            # implement wsi model evaluation
             wsi_metrics, artifacts = self.calc_optimal_wsi_metrics(val_predictions, test_predictions, test_dataframe)
             metrics.update(wsi_metrics)
         metrics = self.add_prefix(metrics, mode)
