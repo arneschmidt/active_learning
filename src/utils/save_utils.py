@@ -77,7 +77,10 @@ def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, acqu
 
     for unc in highest_unc_indices.keys():
         out_dir_unc = os.path.join(out_dir, unc)
-        os.makedirs(out_dir_unc, exist_ok=True)
+        out_dir_unc_images = os.path.join(out_dir_unc, 'images')
+        out_dir_unc_masks = os.path.join(out_dir_unc, 'masks')
+        os.makedirs(out_dir_unc_images, exist_ok=True)
+        os.makedirs(out_dir_unc_masks, exist_ok=True)
 
         top_unc = highest_unc_indices[unc]
         images = []
@@ -87,7 +90,10 @@ def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, acqu
             images.append(str(file))
             uncertainties.append(highest_unc_values[unc][i])
             path = os.path.join(data_dir, file)
-            shutil.copy(path, out_dir_unc)
+            shutil.copy(path, out_dir_unc_images)
+
+            mask_path = path.replace('/images/', '/masks/')
+            shutil.copy(mask_path, out_dir_unc_masks)
 
         out_df = pd.DataFrame()
         out_df['image'] = np.array(images)
