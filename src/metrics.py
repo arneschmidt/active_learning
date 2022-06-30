@@ -97,7 +97,8 @@ class MetricCalculator():
         :param test_predictions:
         :return:
         """
-        confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
+        # confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
+        confidence_threshold = 0.0
         metrics_dict, artifacts, _ = self.calc_wsi_metrics(test_predictions, test_dataframe, confidence_threshold)
         metrics_dict['confidence_threshold'] = confidence_threshold
         return metrics_dict, artifacts
