@@ -62,18 +62,26 @@ def save_roc(roc, output_dir):
     np.savetxt(os.path.join(output_dir, 'thresholds.csv'), roc['thresholds'], delimiter=",")
 
 
-def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, acquisition_step):
+def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, train_indices, acquisition_step):
     data_dir = globals.config['data']["dir"]
     out_dir = globals.config['logging']['experiment_folder']
     out_dir = os.path.join(out_dir, str(acquisition_step))
     os.makedirs(out_dir, exist_ok=True)
 
-    # for i in range(train_indices.shape[0]):
-    #     out_dir_acq = os.path.join(out_dir, 'acquisition')
-    #     os.makedirs(out_dir_acq, exist_ok=True)
-    #     file = data_gen.train_df['image_path'].loc[train_indices[i]]
-    #     path = os.path.join(data_dir, file)
-    #     shutil.copy(path, out_dir_acq)
+    out_dir_acq = os.path.join(out_dir, 'acquisition')
+    out_dir_acq_images = os.path.join(out_dir_acq, 'images')
+    out_dir_acq_masks = os.path.join(out_dir, 'masks')
+    os.makedirs(out_dir_acq_images, exist_ok=True)
+    os.makedirs(out_dir_acq_masks, exist_ok=True)
+
+    os.makedirs(out_dir_acq, exist_ok=True)
+    for i in range(train_indices.shape[0]):
+
+        file = data_gen.train_df['image_path'].loc[train_indices[i]]
+        path = os.path.join(data_dir, file)
+        shutil.copy(path, out_dir_acq_images)
+        mask_path = path.replace('/images/', '/masks/')
+        shutil.copy(mask_path, out_dir_acq_masks)
 
     for unc in highest_unc_indices.keys():
         out_dir_unc = os.path.join(out_dir, unc)

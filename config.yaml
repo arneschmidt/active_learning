@@ -58,7 +58,7 @@ data:
     brightness: 0.2 # between 0 and 1
   active_learning:
     start:
-      wsis_per_class: 2
+      wsis_per_class: 1
       labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
     step:
       wsis: 2
@@ -72,5 +72,4 @@ logging:
   interval: 5
   test_on_the_fly: True
   run_name: efficientnetb1
-#  tracking_url: /work/work_arne/mlflow_server
-  tracking_url: /home/arne/mlruns
+  tracking_url: /work/work_arne/mlflow_server

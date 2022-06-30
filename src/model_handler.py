@@ -91,7 +91,7 @@ class ModelHandler:
                 self.update_model(self.n_training_points)
 
                 if globals.config['logging']['save_images']:
-                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, acquisition_step)
+                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, train_indices, acquisition_step)
 
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
@@ -140,7 +140,7 @@ class ModelHandler:
 
     def select_data_for_labeling(self, data_gen: DataGenerator):
         print('Select data to be labeled..')
-        unlabeled_dataframe = data_gen.train_df.loc[np.logical_not(data_gen.train_df['labeled'])]
+        unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
         wsi_dataframe = data_gen.wsi_df
 
         wsis_per_acquisition = globals.config['data']['active_learning']['step']['wsis']

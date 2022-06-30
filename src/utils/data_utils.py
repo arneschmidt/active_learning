@@ -37,8 +37,8 @@ def get_start_label_ids(dataframe, wsi_dataframe, data_config):
     number_wsis = data_config['active_learning']['start']['wsis_per_class']
     number_labels = data_config['active_learning']['start']['labels_per_class_and_wsi']
     sampled_indices = np.array([])
+    selected_wsis = []
     for class_id in class_ids:
-        selected_wsis = []
         for iter_wsi in range(number_wsis):
             for attempt in range(10):
                 wsi_candidates = (wsi_dataframe['class_primary'] == int(class_id)) & (wsi_dataframe['Partition'] == 'train')
@@ -57,7 +57,7 @@ def get_start_label_ids(dataframe, wsi_dataframe, data_config):
             else:
                 df_selection = dataframe['index'].loc[dataframe['wsi'] == wsi_selection]
             sampled_indices = np.concatenate([sampled_indices, df_selection])
-    return sampled_indices
+    return sampled_indices, selected_wsis
 #
 #
 # def hide_instance_labels_pc(dataframe, wsi_dataframe, num_instance_samples):
