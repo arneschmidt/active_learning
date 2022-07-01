@@ -116,12 +116,12 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
                     self._save_model('acquisition_' + str(self.acquisition_steps))
                 mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
                 mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
-            lr_decrease_epoch = globals.config['model']['lr_decrease_epochs']
-            if lr_decrease_epoch != -1 and self.finished_epochs == lr_decrease_epoch:
-                old_lr = float(K.get_value(self.model.optimizer.lr))
-                new_lr = old_lr * 0.1
-                K.set_value(self.model.optimizer.lr, new_lr)
-                print('Reducing learning rate to: ' + str(new_lr))
+        lr_decrease_epoch = globals.config['model']['lr_decrease_epochs']
+        if lr_decrease_epoch != -1 and self.finished_epochs == lr_decrease_epoch:
+            old_lr = float(K.get_value(self.model.optimizer.lr))
+            new_lr = old_lr * 0.1
+            K.set_value(self.model.optimizer.lr, new_lr)
+            print('Reducing learning rate to: ' + str(new_lr))
 
             # If not, check if model has converged
             # else:
