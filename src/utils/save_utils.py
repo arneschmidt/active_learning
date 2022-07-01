@@ -67,10 +67,10 @@ def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, trai
     out_dir = globals.config['logging']['experiment_folder']
     out_dir = os.path.join(out_dir, str(acquisition_step))
     os.makedirs(out_dir, exist_ok=True)
-
+    data_gen.wsi_df.to_csv(os.path.join(out_dir, 'wsi_df.csv'))
     out_dir_acq = os.path.join(out_dir, 'acquisition')
     out_dir_acq_images = os.path.join(out_dir_acq, 'images')
-    out_dir_acq_masks = os.path.join(out_dir, 'masks')
+    out_dir_acq_masks = os.path.join(out_dir_acq, 'masks')
     os.makedirs(out_dir_acq_images, exist_ok=True)
     os.makedirs(out_dir_acq_masks, exist_ok=True)
 
