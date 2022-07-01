@@ -3,8 +3,9 @@ random_seed: 0
 model:
   test_on_the_fly: True
   batch_size: 16
-  epochs: 1
+  epochs: 2
   learning_rate: 0.0001
+  lr_decrease_epochs: 1 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
   optimizer: adam # adam, sgd
   class_weighted_loss: True
   loss_function: categorical_crossentropy # "categorical_crossentropy", "focal_loss"
@@ -39,7 +40,6 @@ model:
     ood_k_neighbors: 20
     aleatoric_factor: 0.5
     ood_factor: 2.0
-    after_epochs_of_no_improvement: 100
     after_acc_above: 0.8
     wsi_selection: uncertainty_mean # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
 
