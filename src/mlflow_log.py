@@ -119,7 +119,7 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
             lr_decrease_epoch = globals.config['model']['lr_decrease_epochs']
             if lr_decrease_epoch != -1 and self.finished_epochs == lr_decrease_epoch:
                 old_lr = float(K.get_value(self.model.optimizer.lr))
-                new_lr = old_lr * 0.5
+                new_lr = old_lr * 0.1
                 K.set_value(self.model.optimizer.lr, new_lr)
                 print('Reducing learning rate to: ' + str(new_lr))
 
@@ -167,5 +167,4 @@ def format_metrics_for_mlflow(metrics_dict):
             metrics_dict[key] = f1_score[class_id]
 
         metrics_dict[prefix + 'f1_mean'] = np.mean(f1_score)
-
     return metrics_dict
