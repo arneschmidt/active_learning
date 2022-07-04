@@ -78,6 +78,8 @@ class ModelHandler:
                 steps_per_epoch=steps,
                 callbacks=callbacks,
             )
+            # create_wsi_dataset
+            # self.wsi_model.fit(wsi_data)
             if globals.config['model']['test_on_the_fly']:
                 self.test(data_gen, step=self.n_training_points)
 
@@ -89,7 +91,7 @@ class ModelHandler:
                 self.update_model(self.n_training_points)
 
                 if globals.config['logging']['save_images']:
-                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, acquisition_step)
+                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, train_indices, acquisition_step)
 
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
@@ -138,7 +140,7 @@ class ModelHandler:
 
     def select_data_for_labeling(self, data_gen: DataGenerator):
         print('Select data to be labeled..')
-        dataframe = data_gen.train_df.loc[np.logical_not(data_gen.train_df['labeled'])]
+        unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
         wsi_dataframe = data_gen.wsi_df
 
         wsis_per_acquisition = globals.config['data']['active_learning']['step']['wsis']
@@ -160,7 +162,7 @@ class ModelHandler:
                                                                           wsi_dataframe['Partition'] == 'train')])
             mean_uncertainties= np.zeros_like(unlabeled_wsis)
             for i in range(len(unlabeled_wsis)):
-                rows = dataframe['wsi'] == unlabeled_wsis[i]
+                rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
                 mean_uncertainties[i] = np.mean(acquisition_scores[rows])
             sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
             selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
@@ -172,32 +174,32 @@ class ModelHandler:
         # get the highest uncertainties of the selected WSIs
 
         if not globals.config['data']['active_learning']['step']['flexible_labeling']:
-            ids = np.array([])
+            ids = np.array([]) # reference to unlabeled dataframe
             for wsi in selected_wsis:
                 wsi_rows = np.array([])
                 if not globals.config['model']['acquisition']['random']:
                     for row in sorted_rows:
-                        if dataframe['wsi'].iloc[row] == wsi:
+                        if unlabeled_dataframe['wsi'].iloc[row] == wsi:
                             wsi_rows = np.concatenate([row, wsi_rows], axis=None)
                         if wsi_rows.size >= labels_per_wsi:
                             break
                 else:
-                    candidates = np.squeeze(np.argwhere(np.array(dataframe['wsi']==wsi)))
+                    candidates = np.squeeze(np.argwhere(np.array(unlabeled_dataframe['wsi']==wsi)))
                     wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
-                wsi_ids = dataframe['index'].iloc[wsi_rows].values[:]
+                wsi_ids = unlabeled_dataframe['index'].iloc[wsi_rows].values[:] # convert to train_df reference
                 ids = np.concatenate([ids, wsi_ids], axis=None)
             if ids.size != wsis_per_acquisition*labels_per_wsi:
                 print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
                 print('Requested labels: ', ids.size)
                 print('Not enough labels obtained!')
         else:
-            ids = []
+            unlabeled_ids = [] # reference to unlabeled dataframe
             for row in sorted_rows:
-                if dataframe['wsi'].iloc[row] in selected_wsis:
-                    ids.append(row)
-                if len(ids) > wsis_per_acquisition*labels_per_wsi:
+                if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis:
+                    unlabeled_ids.append(row)
+                if len(unlabeled_ids) > wsis_per_acquisition*labels_per_wsi:
                     break
-            ids = np.array(ids)
+            ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
 
         return selected_wsis, ids
 
@@ -243,8 +245,6 @@ class ModelHandler:
         self.model.compile(optimizer=optimizer,
                            loss=loss,
                            metrics=['accuracy',
-                                    tf.keras.metrics.Precision(),
-                                    tf.keras.metrics.Recall(),
                                     tfa.metrics.F1Score(num_classes=self.num_classes),
                                     tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
                                     ])

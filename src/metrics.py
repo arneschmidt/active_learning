@@ -41,6 +41,7 @@ class MetricCalculator():
         if self.metrics_patch_level:
             metrics.update(self.calc_patch_level_metrics(test_predictions, test_dataframe))
         if self.metrics_wsi_level:
+            # implement wsi model evaluation
             wsi_metrics, artifacts = self.calc_optimal_wsi_metrics(val_predictions, test_predictions, test_dataframe)
             metrics.update(wsi_metrics)
         metrics = self.add_prefix(metrics, mode)
@@ -96,7 +97,8 @@ class MetricCalculator():
         :param test_predictions:
         :return:
         """
-        confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
+        # confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
+        confidence_threshold = 0.0
         metrics_dict, artifacts, _ = self.calc_wsi_metrics(test_predictions, test_dataframe, confidence_threshold)
         metrics_dict['confidence_threshold'] = confidence_threshold
         return metrics_dict, artifacts

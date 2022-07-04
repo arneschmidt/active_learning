@@ -36,9 +36,12 @@ class DataGenerator():
 
     def query_from_oracle(self, selected_wsis, train_indices):
         self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
+        for wsi in selected_wsis:
+            self.train_df['available_for_query'].loc[self.train_df['wsi'] == wsi] = False
+
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)
-        self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[np.logical_not(self.train_df['labeled'])],
+        self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['available_for_query']],
                                                                             image_augmentation=False)
 
     def _load_dataframes(self):
@@ -58,10 +61,14 @@ class DataGenerator():
         # init some labeled patches for active learning
         if globals.config['data']['supervision'] == 'active_learning':
             self.train_df['labeled'] = False
-            ids = get_start_label_ids(self.train_df, self.wsi_df, globals.config['data'])
+            self.train_df['available_for_query'] = True
+            ids, selected_wsis = get_start_label_ids(self.train_df, self.wsi_df, globals.config['data'])
+            for wsi in selected_wsis:
+                self.train_df['available_for_query'].loc[self.train_df['wsi'] == wsi] = False
             self.train_df['labeled'].loc[ids] = True
             self.train_generator_unlabeled = self.data_generator_from_dataframe(
-                self.train_df.loc[np.logical_not(self.train_df['labeled'])], image_augmentation=False)
+                self.train_df.loc[self.train_df['available_for_query']], image_augmentation=False)
+
 
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']],
                                                                           shuffle=True)
