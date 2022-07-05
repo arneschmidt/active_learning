@@ -7,7 +7,7 @@ import tensorflow_addons as tfa
 import numpy as np
 import pandas as pd
 from mlflow_log import MLFlowCallback, log_and_store_metrics, log_artifacts
-from model_architecture import create_model
+from model_architecture import create_model, create_wsi_level_model
 from sklearn.neighbors import LocalOutlierFactor
 from utils.save_utils import save_dataframe_with_output, save_metrics_artifacts, save_acquired_images
 from metrics import MetricCalculator
@@ -28,16 +28,17 @@ class ModelHandler:
         config = globals.config
         self.batch_size = config["model"]["batch_size"]
         self.num_classes = config["data"]["num_classes"]
-        self.model = create_model(n_training_points)
+        self.patch_model = create_model(n_training_points)
+        self.wsi_model = create_wsi_level_model(globals.config['data']['active_learning']['start']['wsis_per_class'])
         if config["model"]["load_model"] != 'None':
             self._load_combined_model(config["model"]["load_model"])
         self.ood_estimator = None
-        self._compile_model()
+        self._compile_models()
         self.highest_unc_indices = {}
         self.highest_unc_values = {}
 
-        print(self.model.layers[0].summary())
-        print(self.model.layers[1].summary())
+        print(self.patch_model.layers[0].summary())
+        print(self.patch_model.layers[1].summary())
 
     def train(self, data_gen: DataGenerator):
         """
@@ -71,15 +72,17 @@ class ModelHandler:
                 class_weights = []
 
             steps = np.ceil(data_gen.get_number_of_training_points() / self.batch_size)
-            self.model.fit(
+            print('### Train patch model ### ')
+            self.patch_model.fit(
                 data_gen.train_generator_labeled,
                 epochs=globals.config['model']['epochs'],
                 class_weight=class_weights,
                 steps_per_epoch=steps,
                 callbacks=callbacks,
             )
-            # create_wsi_dataset
-            # self.wsi_model.fit(wsi_data)
+            if globals.config['model']['extra_wsi_level_model']:
+                self.train_wsi_level_model(data_gen)
+
             if globals.config['model']['test_on_the_fly']:
                 self.test(data_gen, step=self.n_training_points)
 
@@ -88,7 +91,7 @@ class ModelHandler:
                 selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
                 self.n_training_points = data_gen.get_number_of_training_points()
-                self.update_model(self.n_training_points)
+                self.update_model(self.n_training_points, np.sum(data_gen.wsi_df['labeled']))
 
                 if globals.config['logging']['save_images']:
                     save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, train_indices, acquisition_step)
@@ -96,13 +99,25 @@ class ModelHandler:
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
 
+    def train_wsi_level_model(self, data_gen):
+        print('### Create WSI level data ### ')
+        train_feat, val_feat, test_feat = self.make_feature_predictions(data_gen)
+        data_gen.create_wsi_level_dataset(train_feat, val_feat, test_feat)
+        print('### Train WSI level model ### ')
+        callback = tf.keras.callbacks.EarlyStopping(monitor='val_cohen_kappa',patience=1000, mode='max',
+                                                    restore_best_weights=True) #only take the best weights
+        self.wsi_model.fit(data_gen.train_feat_gen,
+                           validation_data=data_gen.val_feat_gen,
+                           epochs=100,
+                           callbacks=[callback])
+
     def test(self, data_gen: DataGenerator, step=None):
         """
         Test the model with the parameters specified in the config. Log progress to mlflow (see README)
         :param data_gen: data generator object to provide the image data generators and dataframes
         :return: dict of metrics from testing
         """
-        metric_calculator = MetricCalculator(self.model, data_gen, globals.config)
+        metric_calculator = MetricCalculator(self, data_gen, globals.config)
         metrics, artifacts = metric_calculator.calc_metrics(mode='test')
         save_metrics_artifacts(artifacts, globals.config['logging']['experiment_folder'])
         log_and_store_metrics(metrics, step)
@@ -120,12 +135,12 @@ class ModelHandler:
         return preds
 
     def get_features(self, ds):
-        feature_extractor = self.model.layers[0]
+        feature_extractor = self.patch_model.layers[0]
         features = feature_extractor.predict(ds, verbose=1)
         return features
 
     def get_predictions(self, features):
-        head = self.model.layers[1]
+        head = self.patch_model.layers[1]
 
         if globals.config['model']['head']['type'] == 'bnn':
             num_samples = 20
@@ -137,6 +152,15 @@ class ModelHandler:
             preds = head.predict(features)
 
         return preds
+
+    def make_feature_predictions(self, data_gen: DataGenerator):
+        train_instances_ordered = data_gen.data_generator_from_dataframe(data_gen.train_df.loc[np.logical_not(data_gen.train_df['available_for_query'])],
+                                                                        image_augmentation=False,
+                                                                        shuffle=False)
+        train_feat = self.get_features(train_instances_ordered)
+        val_feat = self.get_features(data_gen.validation_generator)
+        test_feat = self.get_features(data_gen.test_generator)
+        return train_feat, val_feat, test_feat
 
     def select_data_for_labeling(self, data_gen: DataGenerator):
         print('Select data to be labeled..')
@@ -203,33 +227,40 @@ class ModelHandler:
 
         return selected_wsis, ids
 
-    def update_model(self, num_training_points: int):
-        weights = self.model.get_weights()
+    def update_model(self, num_training_points: int, num_labeled_wsi: int):
+        patch_model_weights = self.patch_model.get_weights()
+
         new_model = create_model(num_training_points)
         if globals.config['model']['acquisition']['keep_trained_weights']:
-            new_model.set_weights(weights)
-        self.model = new_model
-        self._compile_model()
+            new_model.set_weights(patch_model_weights)
+        self.patch_model = new_model
+        if True:
+            wsi_model_weights = self.wsi_model.get_weights()
+            new_wsi_model = create_wsi_level_model(num_labeled_wsi)
+            if globals.config['model']['acquisition']['keep_trained_weights']:
+                new_wsi_model.set_weights(wsi_model_weights)
+            self.wsi_model = new_wsi_model
+        self._compile_models()
 
     def update_class_weights(self, class_weights):
         self.class_weights = class_weights
 
     def update_ood_estimator(self, features_labeled):
-        features = np.expand_dims(np.mean(features_labeled, axis=1), axis=1)
-
+        # features = np.expand_dims(np.mean(features_labeled, axis=1), axis=1)
+        features = features_labeled
         ood_k_neighbors = globals.config['model']['acquisition']['ood_k_neighbors']
         ood_estimator = LocalOutlierFactor(n_neighbors=ood_k_neighbors, novelty=True)
         ood_estimator.fit(features)
 
         self.ood_estimator = ood_estimator
 
-    def _compile_model(self):
+    def _compile_models(self):
         """
         Compile keras model.
         """
         input_shape = (self.batch_size, globals.config["data"]["image_target_size"][0],
                        globals.config["data"]["image_target_size"][1], 3)
-        self.model.build(input_shape)
+        self.patch_model.build(input_shape)
 
         if globals.config['model']['optimizer'] == 'sgd':
             optimizer = tf.optimizers.SGD(learning_rate=globals.config["model"]["learning_rate"])
@@ -241,12 +272,19 @@ class ModelHandler:
         else:
             loss = tf.keras.losses.CategoricalCrossentropy(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
 
-
-        self.model.compile(optimizer=optimizer,
-                           loss=loss,
-                           metrics=['accuracy',
+        self.patch_model.compile(optimizer=optimizer,
+                                 loss=loss,
+                                 metrics=['accuracy',
                                     tfa.metrics.F1Score(num_classes=self.num_classes),
                                     tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
+                                    ])
+        wsi_classes = 6
+        self.wsi_model.build(input_shape)
+        self.wsi_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.001),
+                           loss=tf.keras.losses.CategoricalCrossentropy(),
+                           metrics=['accuracy',
+                                    tfa.metrics.F1Score(num_classes=wsi_classes),
+                                    tfa.metrics.CohenKappa(num_classes=wsi_classes, weightage='quadratic')
                                     ])
 
 
@@ -262,9 +300,9 @@ class ModelHandler:
 
     def _load_combined_model(self, artifact_path: str = "./models/"):
         model_path = os.path.join(artifact_path, "models")
-        self.model.layers[0].load_weights(os.path.join(model_path, "feature_extractor.h5"))
-        self.model.layers[1].load_weights(os.path.join(model_path, "head.h5"))
-        self.model.summary()
+        self.patch_model.layers[0].load_weights(os.path.join(model_path, "feature_extractor.h5"))
+        self.patch_model.layers[1].load_weights(os.path.join(model_path, "head.h5"))
+        self.patch_model.summary()
 
     def _save_predictions(self, image_batch: np.array, predictions: np.array, output_dir: str):
         for i in range(image_batch[0].shape[0]):
@@ -358,7 +396,7 @@ class ModelHandler:
 
     def get_ood_probabilities(self, features):
         if globals.config['model']['acquisition']['focussed_epistemic']:
-            features = np.expand_dims(np.mean(features, axis=1), axis=1)
+            # features = np.expand_dims(np.mean(features, axis=1), axis=1)
             in_distribution_prob = self.ood_estimator.score_samples(features)
             in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
                                  (np.max(in_distribution_prob) - np.min(in_distribution_prob))

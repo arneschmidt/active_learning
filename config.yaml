@@ -3,7 +3,7 @@ random_seed: 0
 model:
   test_on_the_fly: True
   batch_size: 16
-  epochs: 2
+  epochs: 1
   learning_rate: 0.0001
   lr_decrease_epochs: 1 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
   optimizer: adam # adam, sgd
@@ -32,6 +32,7 @@ model:
       kl_loss_factor: 1
       extra_layer: True
       weight_std: 0.05
+  extra_wsi_level_model: True
   acquisition:
     random: False # if True, all other acquisition parameters are ignored
     keep_trained_weights: False
@@ -58,7 +59,7 @@ data:
     brightness: 0.2 # between 0 and 1
   active_learning:
     start:
-      wsis_per_class: 1
+      wsis_per_class: 2
       labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
     step:
       wsis: 2

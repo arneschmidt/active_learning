@@ -3,10 +3,13 @@ import globals
 import mxnet as mx
 import pandas as pd
 import numpy as np
+import tensorflow as tf
 from skimage.filters import gaussian
 from sklearn.utils import class_weight
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
 from utils.data_utils import extract_df_info, extract_wsi_df_info, get_start_label_ids
+from utils.feature_data_generator import FeatureDataGenerator
+
 
 
 class DataGenerator():
@@ -28,6 +31,9 @@ class DataGenerator():
         self.validation_generator = None
         self.test_generator = None
         self.wsi_df = None
+        self.train_feat_gen = None
+        self.val_feat_gen = None
+        self.test_feat_gen = None
         self._load_dataframes()
         self._initialize_data_generators()
 
@@ -221,3 +227,47 @@ class DataGenerator():
         for class_id in classes:
             class_weights[class_id] = class_weights_array[class_id]
         return class_weights
+
+    def create_wsi_level_dataset(self, train_feat, val_feat, test_feat):
+        self.train_feat_gen = self.create_wsi_level_split_gen('train', train_feat, self.train_df.loc[np.logical_not(self.train_df['available_for_query'])])
+        self.val_feat_gen = self.create_wsi_level_split_gen('val', val_feat, self.val_df)
+        self.test_feat_gen = self.create_wsi_level_split_gen('test', test_feat, self.test_df)
+
+    def create_wsi_level_split_gen(self, split: str, features: np.array, df: pd.DataFrame):
+        """
+        create data generator for train, validation or test split ('train', 'val' or 'test')
+        """
+        if split == 'train':
+            wsi_df_split = self.wsi_df[np.logical_and(self.wsi_df['Partition'] == 'train', self.wsi_df['labeled'])]
+            shuffle = True
+        elif split == 'val':
+            wsi_df_split = self.wsi_df[self.wsi_df['Partition'] == 'val']
+            shuffle = False
+        else:
+            wsi_df_split = self.wsi_df[self.wsi_df['Partition'] == 'test']
+            shuffle = False
+
+        one_hot_labels = np.expand_dims(tf.keras.utils.to_categorical(np.array(wsi_df_split['isup_grade'])), axis=1)
+        images, labels = self.prepare_bags(features, np.array(wsi_df_split['slide_id']),
+                                           one_hot_labels, np.array(df['wsi']))
+
+        data_gen = FeatureDataGenerator(images, labels, shuffle)
+        return data_gen
+
+    def prepare_bags(self, features, bag_names, bag_labels, bag_names_per_instance):
+        """
+        Create MIL bags.
+        """
+        bag_names = bag_names
+        images = []
+        labels = []
+
+        for i in range(len(bag_names)):
+            bag_name = bag_names[i]
+            id_bool = (bag_name == bag_names_per_instance)
+            bag_features = features[id_bool]
+
+            images.append(bag_features)
+            labels.append(bag_labels[i])
+
+        return images, labels
