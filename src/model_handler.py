@@ -91,7 +91,7 @@ class ModelHandler:
                 selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
                 self.n_training_points = data_gen.get_number_of_training_points()
-                self.update_model(self.n_training_points, np.sum(data_gen.wsi_df['labeled']))
+                self.update_model(self.n_training_points, int(np.sum(data_gen.wsi_df['labeled'])))
 
                 if globals.config['logging']['save_images']:
                     save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, train_indices, acquisition_step)
@@ -221,7 +221,7 @@ class ModelHandler:
             for row in sorted_rows:
                 if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis:
                     unlabeled_ids.append(row)
-                if len(unlabeled_ids) > wsis_per_acquisition*labels_per_wsi:
+                if len(unlabeled_ids) >= wsis_per_acquisition*labels_per_wsi:
                     break
             ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
 
@@ -278,14 +278,15 @@ class ModelHandler:
                                     tfa.metrics.F1Score(num_classes=self.num_classes),
                                     tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
                                     ])
-        wsi_classes = 6
-        self.wsi_model.build(input_shape)
-        self.wsi_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.001),
-                           loss=tf.keras.losses.CategoricalCrossentropy(),
-                           metrics=['accuracy',
-                                    tfa.metrics.F1Score(num_classes=wsi_classes),
-                                    tfa.metrics.CohenKappa(num_classes=wsi_classes, weightage='quadratic')
-                                    ])
+        if globals.config['model']['extra_wsi_level_model']:
+            wsi_classes = 6
+            self.wsi_model.build(input_shape)
+            self.wsi_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.001),
+                               loss=tf.keras.losses.CategoricalCrossentropy(),
+                               metrics=['accuracy',
+                                        tfa.metrics.F1Score(num_classes=wsi_classes),
+                                        tfa.metrics.CohenKappa(num_classes=wsi_classes, weightage='quadratic')
+                                        ])
 
 
     def _calculate_most_uncertain_class(self, val_metrics: Dict):
