@@ -90,8 +90,8 @@ def save_acquired_images(data_gen, train_indices, highest_uncertainty_dfs, acqui
         os.makedirs(out_dir_unc_images, exist_ok=True)
         os.makedirs(out_dir_unc_masks, exist_ok=True)
 
-        highest_uncertainty_dfs.to_csv(os.path.join(out_dir_unc, 'dataframe.csv'))
-        image_names = np.array(highest_uncertainty_dfs['image_path'])
+        highest_uncertainty_dfs[unc].to_csv(os.path.join(out_dir_unc, 'dataframe.csv'))
+        image_names = np.array(highest_uncertainty_dfs[unc]['image_path'])
 
         for i in range(len(image_names)):
             file = image_names[i]
