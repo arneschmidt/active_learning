@@ -83,6 +83,7 @@ def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, trai
         mask_path = path.replace('/images/', '/masks/')
         shutil.copy(mask_path, out_dir_acq_masks)
 
+    unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
     for unc in highest_unc_indices.keys():
         out_dir_unc = os.path.join(out_dir, unc)
         out_dir_unc_images = os.path.join(out_dir_unc, 'images')
@@ -94,7 +95,7 @@ def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, trai
         images = []
         uncertainties = []
         for i in range(top_unc.shape[0]):
-            file = data_gen.train_df['image_path'].loc[top_unc[i]]
+            file = unlabeled_dataframe['image_path'].loc[top_unc[i]]
             images.append(str(file))
             uncertainties.append(highest_unc_values[unc][i])
             path = os.path.join(data_dir, file)

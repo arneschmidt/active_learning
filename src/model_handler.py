@@ -431,7 +431,7 @@ class ModelHandler:
         return acq_scores
 
     def store_highest_uncertainty_indices(self, unc, name):
-        n = 10
+        n = 20
         sorted_ids = np.argsort(unc)[::-1]
         self.highest_unc_indices[name] = sorted_ids[0:n]
         self.highest_unc_values[name] = unc[sorted_ids[0:n]]
