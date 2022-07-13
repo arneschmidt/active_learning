@@ -24,6 +24,7 @@ class ModelHandler:
         self.n_training_points = n_training_points
         self.acquisition_step = 0
         self.uncertainty_logs = {}
+        self.highest_uncertainty_dfs = {}
         self.class_weights = {}
         config = globals.config
         self.batch_size = config["model"]["batch_size"]
@@ -34,8 +35,6 @@ class ModelHandler:
             self._load_combined_model(config["model"]["load_model"])
         self.ood_estimator = None
         self._compile_models()
-        self.highest_unc_indices = {}
-        self.highest_unc_values = {}
 
         print(self.patch_model.layers[0].summary())
         print(self.patch_model.layers[1].summary())
@@ -94,7 +93,7 @@ class ModelHandler:
                 self.update_model(self.n_training_points, int(np.sum(data_gen.wsi_df['labeled'])))
 
                 if globals.config['logging']['save_images']:
-                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, train_indices, acquisition_step)
+                    save_acquired_images(data_gen, train_indices, self.highest_uncertainty_dfs, acquisition_step)
 
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
@@ -179,7 +178,8 @@ class ModelHandler:
             if globals.config['model']['acquisition']['focussed_epistemic']:
                 self.update_ood_estimator(features_labeled)
 
-            acquisition_scores = self.get_acquisition_scores(preds, features)
+            acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features)
+            self.store_dataframes_for_logging(data_gen, acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc)
             sorted_rows = np.argsort(acquisition_scores)[::-1]
 
             unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
@@ -382,9 +382,6 @@ class ModelHandler:
         aleatoric_unc = np.array(aleatoric_unc)
         epistemic_unc = np.array(epistemic_unc)
 
-        self.store_highest_uncertainty_indices(aleatoric_unc, 'aleatoric_unc')
-        self.store_highest_uncertainty_indices(epistemic_unc, 'epistemic_unc')
-
         self.uncertainty_logs['aleatoric_unc_mean'] = np.mean(aleatoric_unc)
         self.uncertainty_logs['aleatoric_unc_min'] = np.min(aleatoric_unc)
         self.uncertainty_logs['aleatoric_unc_max'] = np.max(aleatoric_unc)
@@ -402,8 +399,6 @@ class ModelHandler:
             in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
                                  (np.max(in_distribution_prob) - np.min(in_distribution_prob))
             ood_score = 1 - in_dist_normalized
-
-            self.store_highest_uncertainty_indices(ood_score, 'ood_score')
 
             self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
             self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
@@ -423,16 +418,23 @@ class ModelHandler:
 
         acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
 
-        self.store_highest_uncertainty_indices(acq_scores, 'acq_scores')
         self.uncertainty_logs['acq_scores_mean'] = np.mean(acq_scores)
         self.uncertainty_logs['acq_scores_min'] = np.min(acq_scores)
         self.uncertainty_logs['acq_scores_max'] = np.max(acq_scores)
 
-        return acq_scores
+        return acq_scores, epistemic_unc, aleatoric_unc, ood_prob
 
-    def store_highest_uncertainty_indices(self, unc, name):
-        n = 20
-        sorted_ids = np.argsort(unc)[::-1]
-        self.highest_unc_indices[name] = sorted_ids[0:n]
-        self.highest_unc_values[name] = unc[sorted_ids[0:n]]
+    def store_dataframes_for_logging(self, data_gen, acq_scores, epistemic_unc, aleatoric_unc, ood_unc):
+        unc_names = ['acq_scores', 'epistemic_unc', 'aleatoric_unc', 'ood_unc']
+        uncs = [acq_scores, epistemic_unc, aleatoric_unc, ood_unc]
+        unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
+        for i in range(len(unc_names)):
+            unlabeled_dataframe[unc_names[i]] = uncs[i]
+        for i in range(len(unc_names)):
+            unc_name = unc_names[i]
+            unc = uncs[i]
+            n = 20
+            sorted_ids = np.argsort(unc)[::-1][:n]
+            self.highest_uncertainty_dfs[unc_name] = unlabeled_dataframe.iloc[sorted_ids]
+
 
