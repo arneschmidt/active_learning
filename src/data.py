@@ -194,9 +194,9 @@ class DataGenerator():
             out_dict['number_of_patches_GG5_train'] = np.sum(train_df['class'] == '3')
 
         out_dict['number_of_wsis_val'] = len(np.unique(np.array(self.val_df['wsi'])))
-        out_dict['number_of_patches_train'] = len(self.val_df)
+        out_dict['number_of_patches_val'] = len(self.val_df)
         out_dict['number_of_wsis_test'] = len(np.unique(np.array(self.test_df['wsi'])))
-        out_dict['number_of_patches_train'] = len(self.test_df)
+        out_dict['number_of_patches_test'] = len(self.test_df)
 
         return out_dict
 

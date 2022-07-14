@@ -179,7 +179,7 @@ class ModelHandler:
                 self.update_ood_estimator(features_labeled)
 
             acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features)
-            self.store_dataframes_for_logging(data_gen, acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc)
+
             sorted_rows = np.argsort(acquisition_scores)[::-1]
 
             unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
@@ -210,8 +210,7 @@ class ModelHandler:
                 else:
                     candidates = np.squeeze(np.argwhere(np.array(unlabeled_dataframe['wsi']==wsi)))
                     wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
-                wsi_ids = unlabeled_dataframe['index'].iloc[wsi_rows].values[:] # convert to train_df reference
-                ids = np.concatenate([ids, wsi_ids], axis=None)
+                ids = np.concatenate([ids, wsi_rows], axis=None)
             if ids.size != wsis_per_acquisition*labels_per_wsi:
                 print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
                 print('Requested labels: ', ids.size)
@@ -223,8 +222,9 @@ class ModelHandler:
                     unlabeled_ids.append(row)
                 if len(unlabeled_ids) >= wsis_per_acquisition*labels_per_wsi:
                     break
-            ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
-
+        ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
+        if not globals.config['model']['acquisition']['random']:
+            self.store_dataframes_for_logging(data_gen, unlabeled_ids, acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc)
         return selected_wsis, ids
 
     def update_model(self, num_training_points: int, num_labeled_wsi: int):
@@ -424,10 +424,13 @@ class ModelHandler:
 
         return acq_scores, epistemic_unc, aleatoric_unc, ood_prob
 
-    def store_dataframes_for_logging(self, data_gen, acq_scores, epistemic_unc, aleatoric_unc, ood_unc):
+    def store_dataframes_for_logging(self, data_gen, acquisition_ids, acq_scores, epistemic_unc, aleatoric_unc, ood_unc):
+
         unc_names = ['acq_scores', 'epistemic_unc', 'aleatoric_unc', 'ood_unc']
         uncs = [acq_scores, epistemic_unc, aleatoric_unc, ood_unc]
         unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
+
+        self.highest_uncertainty_dfs['acquisition'] = unlabeled_dataframe.iloc[acquisition_ids]
         for i in range(len(unc_names)):
             unlabeled_dataframe[unc_names[i]] = uncs[i]
         for i in range(len(unc_names)):
