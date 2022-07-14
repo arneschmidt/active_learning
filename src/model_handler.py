@@ -430,9 +430,12 @@ class ModelHandler:
         uncs = [acq_scores, epistemic_unc, aleatoric_unc, ood_unc]
         unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
 
-        self.highest_uncertainty_dfs['acquisition'] = unlabeled_dataframe.iloc[acquisition_ids]
+        # add uncertainties to dataframe
         for i in range(len(unc_names)):
             unlabeled_dataframe[unc_names[i]] = uncs[i]
+
+        # store dataframes of acquisition and all uncertainties
+        self.highest_uncertainty_dfs['acquisition'] = unlabeled_dataframe.iloc[acquisition_ids]
         for i in range(len(unc_names)):
             unc_name = unc_names[i]
             unc = uncs[i]
