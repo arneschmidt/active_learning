@@ -111,9 +111,6 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
                 self.best_result = metrics_dict[metrics_for_monitoring]
                 self.best_metrics = metrics_dict
                 self.best_weights = self.model.get_weights()
-                if globals.config["model"]["save_model"]:
-                    print("\n New best model! Saving model..")
-                    self._save_model('acquisition_' + str(self.acquisition_steps))
                 mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
                 mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
         lr_decrease_epoch = globals.config['model']['lr_decrease_epochs']
@@ -140,14 +137,6 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         if self.best_weights is not None:
             self.model.set_weights(self.best_weights)
         self.best_weights = None
-
-    def _save_model(self, name: str):
-        save_dir = os.path.join(globals.config["output_dir"], "models/" + name)
-        os.makedirs(save_dir, exist_ok=True)
-        fe_path = os.path.join(save_dir, "feature_extractor.h5")
-        head_path = os.path.join(save_dir, "head.h5")
-        self.model.layers[0].save_weights(fe_path)
-        self.model.layers[1].save_weights(head_path)
 
 
 def format_metrics_for_mlflow(metrics_dict):

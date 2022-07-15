@@ -81,7 +81,9 @@ class ModelHandler:
             )
             if globals.config['model']['extra_wsi_level_model']:
                 self.train_wsi_level_model(data_gen)
-
+            if globals.config["model"]["save_model"]:
+                print("\n New best model! Saving model..")
+                self._save_models(acquisition_step)
             if globals.config['model']['test_on_the_fly']:
                 self.test(data_gen, step=self.n_training_points)
 
@@ -399,7 +401,9 @@ class ModelHandler:
             in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
                                  (np.max(in_distribution_prob) - np.min(in_distribution_prob))
             ood_score = 1 - in_dist_normalized
-
+            normalization_mean = 0.1
+            ood_score = normalization_mean * ood_score / np.mean(ood_score)
+            self.uncertainty_logs['ood_in_dist_prob_mean'] = np.mean(in_distribution_prob)
             self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
             self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
             self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
@@ -442,5 +446,20 @@ class ModelHandler:
             n = 20
             sorted_ids = np.argsort(unc)[::-1][:n]
             self.highest_uncertainty_dfs[unc_name] = unlabeled_dataframe.iloc[sorted_ids]
+
+    def _save_models(self, acquisition_step):
+        save_dir = os.path.join(globals.config['logging']['experiment_folder'], str(acquisition_step))
+        os.makedirs(save_dir, exist_ok=True)
+        save_dir = os.path.join(save_dir, "models/")
+        os.makedirs(save_dir, exist_ok=True)
+        print('Save models in: ' + save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        fe_path = os.path.join(save_dir, "feature_extractor.h5")
+        patch_head_path = os.path.join(save_dir, "patch_head.h5")
+        self.patch_model.layers[0].save_weights(fe_path)
+        self.patch_model.layers[1].save_weights(patch_head_path)
+        if self.wsi_model is not None:
+            wsi_head_path = os.path.join(save_dir, "wsi_head.h5")
+            self.wsi_model.save_weights(wsi_head_path)
 
 
