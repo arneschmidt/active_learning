@@ -1,7 +1,7 @@
 data:
   dataset_name: panda
-  dir: /data/BasesDeDatos/Panda/Panda_patches_center/
-  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_center/dummy_200/
+  dir: /home/arne/data/Panda/Panda_patches_center/
+  data_split_dir: /home/arne/data/Panda/Panda_patches_center/dummy_200/
   artifact_dir: ./dataset_dependent/panda/
   image_target_size: [512, 512]
   num_classes: 4

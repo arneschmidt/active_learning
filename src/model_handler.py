@@ -82,7 +82,7 @@ class ModelHandler:
             if globals.config['model']['extra_wsi_level_model']:
                 self.train_wsi_level_model(data_gen)
             if globals.config["model"]["save_model"]:
-                print("\n New best model! Saving model..")
+                print("\n Saving model..")
                 self._save_models(acquisition_step)
             if globals.config['model']['test_on_the_fly']:
                 self.test(data_gen, step=self.n_training_points)
