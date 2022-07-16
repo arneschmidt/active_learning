@@ -74,7 +74,9 @@ class DataGenerator():
             self.train_df['labeled'].loc[ids] = True
             self.train_generator_unlabeled = self.data_generator_from_dataframe(
                 self.train_df.loc[self.train_df['available_for_query']], image_augmentation=False)
-
+        else:
+            self.train_df['labeled'] = True
+            self.train_df['available_for_query'] = False
 
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']],
                                                                           shuffle=True)
