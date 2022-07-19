@@ -236,7 +236,7 @@ class ModelHandler:
         if globals.config['model']['acquisition']['keep_trained_weights']:
             new_model.set_weights(patch_model_weights)
         self.patch_model = new_model
-        if True:
+        if globals.config['model']['extra_wsi_level_model']:
             wsi_model_weights = self.wsi_model.get_weights()
             new_wsi_model = create_wsi_level_model(num_labeled_wsi)
             if globals.config['model']['acquisition']['keep_trained_weights']:
