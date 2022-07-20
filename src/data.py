@@ -7,7 +7,7 @@ import tensorflow as tf
 from skimage.filters import gaussian
 from sklearn.utils import class_weight
 from tensorflow.keras.preprocessing.image import ImageDataGenerator
-from utils.data_utils import extract_df_info, extract_wsi_df_info, get_start_label_ids
+from utils.data_utils import extract_df_info, extract_wsi_df_info, get_start_label_ids, clean_wsi_df
 from utils.feature_data_generator import FeatureDataGenerator
 
 
@@ -47,8 +47,6 @@ class DataGenerator():
 
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)
-        self.train_generator_unlabeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['available_for_query']],
-                                                                            image_augmentation=False)
 
     def _load_dataframes(self):
         wsi_df = pd.read_csv(os.path.join(globals.config['data']["data_split_dir"], "wsi_labels.csv"))
@@ -61,6 +59,7 @@ class DataGenerator():
         if globals.config['logging']['test_on_the_fly']:
             test_df_raw = pd.read_csv(os.path.join(globals.config['data']["data_split_dir"], "test_patches.csv"))
             self.test_df = extract_df_info(test_df_raw, self.wsi_df, globals.config['data'], split='test')
+        self.wsi_df = clean_wsi_df(self.wsi_df, self.train_df, self.val_df, self.test_df)
 
 
     def _initialize_data_generators(self):
@@ -72,8 +71,6 @@ class DataGenerator():
             for wsi in selected_wsis:
                 self.train_df['available_for_query'].loc[self.train_df['wsi'] == wsi] = False
             self.train_df['labeled'].loc[ids] = True
-            self.train_generator_unlabeled = self.data_generator_from_dataframe(
-                self.train_df.loc[self.train_df['available_for_query']], image_augmentation=False)
         else:
             self.train_df['labeled'] = True
             self.train_df['available_for_query'] = False
@@ -82,7 +79,6 @@ class DataGenerator():
                                                                           shuffle=True)
         self.validation_generator = self.data_generator_from_dataframe(self.val_df, image_augmentation=False, shuffle=False)
         self.test_generator = self.data_generator_from_dataframe(self.test_df, image_augmentation=False, shuffle=False)
-
 
     def data_generator_from_dataframe(self, dataframe: pd.DataFrame, image_augmentation: bool = True,
                                       shuffle: bool = False, target_mode: str = 'class'):
@@ -184,7 +180,6 @@ class DataGenerator():
         :return: dict of statistics
         """
         train_df = self.train_df
-        wsi_df = self.wsi_df
         wsi_names = np.unique(np.array(train_df['wsi']))
         out_dict = {}
         out_dict['number_of_wsis_train'] = len(wsi_names)
@@ -231,7 +226,11 @@ class DataGenerator():
         return class_weights
 
     def create_wsi_level_dataset(self, train_feat, val_feat, test_feat):
-        self.train_feat_gen = self.create_wsi_level_split_gen('train', train_feat, self.train_df.loc[np.logical_not(self.train_df['available_for_query'])])
+        if globals.config['model']['wsi_level_model']['access_to_all_wsis']:
+            train_df = self.train_df
+        else:
+            train_df = self.train_df.loc[np.logical_not(self.train_df['available_for_query'])]
+        self.train_feat_gen = self.create_wsi_level_split_gen('train', train_feat, train_df)
         self.val_feat_gen = self.create_wsi_level_split_gen('val', val_feat, self.val_df)
         self.test_feat_gen = self.create_wsi_level_split_gen('test', test_feat, self.test_df)
 
@@ -240,7 +239,11 @@ class DataGenerator():
         create data generator for train, validation or test split ('train', 'val' or 'test')
         """
         if split == 'train':
-            wsi_df_split = self.wsi_df[np.logical_and(self.wsi_df['Partition'] == 'train', self.wsi_df['labeled'])]
+            if globals.config['model']['wsi_level_model']['access_to_all_wsis']:
+                ids = self.wsi_df['Partition'] == 'train'
+            else:
+                ids = np.logical_and(self.wsi_df['Partition'] == 'train', self.wsi_df['labeled'])
+            wsi_df_split = self.wsi_df[ids]
             shuffle = True
         elif split == 'val':
             wsi_df_split = self.wsi_df[self.wsi_df['Partition'] == 'val']

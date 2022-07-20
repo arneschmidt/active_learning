@@ -98,7 +98,7 @@ class MetricCalculator():
         :param test_predictions:
         :return:
         """
-        if globals.config['model']['extra_wsi_level_model']:
+        if globals.config['model']['wsi_level_model']['use']:
             metrics = self.model_handler.wsi_model.evaluate(self.data_gen.test_feat_gen)
             metrics_dict = {}
             metrics_dict['wsi_isup_cohens_quadratic_kappa'] = metrics[3]

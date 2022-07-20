@@ -26,7 +26,7 @@ def create_model(num_training_points: int):
 
 def create_wsi_level_model(num_training_points: int):
     #    ValueError: Shapes (None, 1) and (1, 6) are incompatible
-    if globals.config['model']['extra_wsi_level_model']:
+    if globals.config['model']['wsi_level_model']['use']:
         attention_module = create_attention_module()
         head = create_head(num_training_points, kl_factor=0.1, num_classes=6)
         wsi_model = Sequential([attention_module, head])

@@ -79,8 +79,9 @@ class ModelHandler:
                 steps_per_epoch=steps,
                 callbacks=callbacks,
             )
-            if globals.config['model']['extra_wsi_level_model']:
-                self.train_wsi_level_model(data_gen)
+            train_feat, val_feat, test_feat = self.make_feature_predictions(data_gen)
+            if globals.config['model']['wsi_level_model']['use']:
+                self.train_wsi_level_model(data_gen, train_feat, val_feat, test_feat)
             if globals.config["model"]["save_model"]:
                 print("\n Saving model..")
                 self._save_models(acquisition_step)
@@ -89,7 +90,7 @@ class ModelHandler:
 
             if globals.config['data']['supervision'] == 'active_learning':
                 mlflow.log_metrics(self.uncertainty_logs, self.n_training_points)
-                selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
+                selected_wsis, train_indices = self.select_data_for_labeling(data_gen, train_feat)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
                 self.n_training_points = data_gen.get_number_of_training_points()
                 self.update_model(self.n_training_points, int(np.sum(data_gen.wsi_df['labeled'])))
@@ -100,9 +101,10 @@ class ModelHandler:
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
 
-    def train_wsi_level_model(self, data_gen):
+    def train_wsi_level_model(self, data_gen, train_feat, val_feat, test_feat):
         print('### Create WSI level data ### ')
-        train_feat, val_feat, test_feat = self.make_feature_predictions(data_gen)
+        if not globals.config['model']['wsi_level_model']['access_to_all_wsis']:
+            train_feat = train_feat[np.logical_not(data_gen.train_df['available_for_query'])]
         data_gen.create_wsi_level_dataset(train_feat, val_feat, test_feat)
         print('### Train WSI level model ### ')
         callback = tf.keras.callbacks.EarlyStopping(monitor='val_cohen_kappa',patience=1000, mode='max',
@@ -155,7 +157,7 @@ class ModelHandler:
         return preds
 
     def make_feature_predictions(self, data_gen: DataGenerator):
-        train_instances_ordered = data_gen.data_generator_from_dataframe(data_gen.train_df.loc[np.logical_not(data_gen.train_df['available_for_query'])],
+        train_instances_ordered = data_gen.data_generator_from_dataframe(data_gen.train_df,
                                                                         image_augmentation=False,
                                                                         shuffle=False)
         train_feat = self.get_features(train_instances_ordered)
@@ -163,7 +165,7 @@ class ModelHandler:
         test_feat = self.get_features(data_gen.test_generator)
         return train_feat, val_feat, test_feat
 
-    def select_data_for_labeling(self, data_gen: DataGenerator):
+    def select_data_for_labeling(self, data_gen: DataGenerator, train_features):
         print('Select data to be labeled..')
         unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
         wsi_dataframe = data_gen.wsi_df
@@ -172,15 +174,16 @@ class ModelHandler:
         labels_per_wsi = globals.config['data']['active_learning']['step']['labels_per_wsi']
 
         if not globals.config['model']['acquisition']['random']:
-            features = self.get_features(data_gen.train_generator_unlabeled)
-            preds = self.get_predictions(features)
+            # features_unlabeled = self.get_features(data_gen.train_generator_unlabeled)
+            features_unlabeled = train_features[data_gen.train_df['available_for_query']]
+            preds = self.get_predictions(features_unlabeled)
 
-            features_labeled = self.get_features(data_gen.train_generator_labeled)
-
+            # features_labeled = self.get_features(data_gen.train_generator_labeled)
+            features_labeled = train_features[data_gen.train_df['labeled']]
             if globals.config['model']['acquisition']['focussed_epistemic']:
                 self.update_ood_estimator(features_labeled)
 
-            acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features)
+            acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features_unlabeled)
 
             sorted_rows = np.argsort(acquisition_scores)[::-1]
 
@@ -236,7 +239,7 @@ class ModelHandler:
         if globals.config['model']['acquisition']['keep_trained_weights']:
             new_model.set_weights(patch_model_weights)
         self.patch_model = new_model
-        if globals.config['model']['extra_wsi_level_model']:
+        if globals.config['model']['wsi_level_model']['use']:
             wsi_model_weights = self.wsi_model.get_weights()
             new_wsi_model = create_wsi_level_model(num_labeled_wsi)
             if globals.config['model']['acquisition']['keep_trained_weights']:
@@ -248,7 +251,6 @@ class ModelHandler:
         self.class_weights = class_weights
 
     def update_ood_estimator(self, features_labeled):
-        # features = np.expand_dims(np.mean(features_labeled, axis=1), axis=1)
         features = features_labeled
         ood_k_neighbors = globals.config['model']['acquisition']['ood_k_neighbors']
         ood_estimator = LocalOutlierFactor(n_neighbors=ood_k_neighbors, novelty=True)
@@ -280,10 +282,10 @@ class ModelHandler:
                                     tfa.metrics.F1Score(num_classes=self.num_classes),
                                     tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
                                     ])
-        if globals.config['model']['extra_wsi_level_model']:
+        if globals.config['model']['wsi_level_model']['use']:
             wsi_classes = 6
             self.wsi_model.build(input_shape)
-            self.wsi_model.compile(optimizer=tf.optimizers.Adam(learning_rate=0.001),
+            self.wsi_model.compile(optimizer=tf.optimizers.Adam(learning_rate=globals.config['model']['wsi_level_model']['learning_rate']),
                                loss=tf.keras.losses.CategoricalCrossentropy(),
                                metrics=['accuracy',
                                         tfa.metrics.F1Score(num_classes=wsi_classes),
@@ -379,7 +381,6 @@ class ModelHandler:
             else:
                 aleatoric_unc.append(0)
                 epistemic_unc.append(self._calc_deterministic_entropy(preds[i]))
-
 
         aleatoric_unc = np.array(aleatoric_unc)
         epistemic_unc = np.array(epistemic_unc)

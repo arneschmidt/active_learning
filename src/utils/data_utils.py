@@ -21,6 +21,14 @@ def extract_df_info(dataframe_raw, wsi_df, data_config, split='train'):
     # return dataframe with some instance labels
     return dataframe
 
+def clean_wsi_df(wsi_df, train_df, val_df, test_df):
+    used_wsis = np.concatenate([np.unique(train_df['wsi']), np.unique(val_df['wsi'])], axis=0)
+    if test_df is not None:
+        used_wsis = np.concatenate([used_wsis, np.unique(test_df['wsi'])], axis=0)
+    new_wsi_df = wsi_df.loc[wsi_df['slide_id'].isin(used_wsis)]
+    return new_wsi_df
+
+
 def get_instance_classes(dataframe, dataframe_raw, wsi_df, data_config, split):
     dataframe = set_wsi_labels_pc(dataframe, wsi_df)
     class_columns = [dataframe_raw["NC"], dataframe_raw["G3"], dataframe_raw["G4"], dataframe_raw["G5"]]
