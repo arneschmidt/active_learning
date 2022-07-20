@@ -79,6 +79,7 @@ class ModelHandler:
                 steps_per_epoch=steps,
                 callbacks=callbacks,
             )
+            print('### Make feature predictions ### ')
             train_feat, val_feat, test_feat = self.make_feature_predictions(data_gen)
             if globals.config['model']['wsi_level_model']['use']:
                 self.train_wsi_level_model(data_gen, train_feat, val_feat, test_feat)

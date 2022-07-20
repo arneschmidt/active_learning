@@ -89,9 +89,12 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
     #         metrics_dict = format_metrics_for_mlflow(logs.copy())
     #         mlflow.log_metrics(metrics_dict, step=current_step)
 
+    def on_train_begin(self, logs=None):
+        K.set_value(self.model.optimizer.lr, globals.config["model"]["learning_rate"])
+
     def on_epoch_end(self, epoch: int, logs=None):
-        current_step = int(self.finished_epochs * (self.acquisition_steps+1))
         self.finished_epochs = self.finished_epochs + 1
+        current_step = int(self.finished_epochs + (self.acquisition_steps*globals.config['model']['epochs']))
         metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
         metrics_for_monitoring = globals.config['model']['metrics_for_monitoring']
@@ -137,6 +140,8 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         if self.best_weights is not None:
             self.model.set_weights(self.best_weights)
         self.best_weights = None
+        self.finished_epochs = 0
+        self.acquisition_steps = self.acquisition_steps + 1
 
 
 def format_metrics_for_mlflow(metrics_dict):
