@@ -36,6 +36,7 @@ def config_logging():
     mlflow.log_params(log_head_config)
     mlflow.log_params(config['model'])
     mlflow.log_params(config['data'])
+    mlflow.log_param('random_seed', config['random_seed'])
 
 
 def data_logging(data_dict):

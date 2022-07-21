@@ -3,7 +3,7 @@ random_seed: 0
 model:
   test_on_the_fly: True
   batch_size: 16
-  epochs: 1
+  epochs: 2
   learning_rate: 0.0001
   lr_decrease_epochs: 1 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
   optimizer: adam # adam, sgd
@@ -22,7 +22,7 @@ model:
     dropout: 0.5
     multiscale: False
   head:
-    type: bnn # deterministic, bnn
+    type: deterministic # deterministic, bnn
     deterministic:
       dropout: 0.0
       number_hidden_units: 128 # feature dimension of hidden layer, set to 0 to skip this layer
@@ -31,7 +31,7 @@ model:
       number_hidden_units: 128
       kl_loss_factor: 1
       extra_layer: True
-      weight_std: 0.05
+      weight_std: 0.1
   wsi_level_model:
     use: True # if false, the wsi metrics will be calculated based on the patch classiciation
     access_to_all_wsis: True # if False, only the acquired WSIs (with patch labels) are used for training
@@ -49,7 +49,7 @@ model:
 
 data:
   dataset_config: ./dataset_dependent/panda/dummy_config.yaml
-  supervision: supervised # 'supervised', 'active_learning'
+  supervision: active_learning # 'supervised', 'active_learning'
   augmentation:
     channel_shift_range: 0.2
     width_shift_range: 0.2 # fraction of total width <1
@@ -73,7 +73,7 @@ data:
 logging:
   log_artifacts: True
   save_images: True
-  interval: 5
+  interval: 1
   test_on_the_fly: True
   run_name: efficientnetb1
   tracking_url: /work/work_arne/mlflow_server

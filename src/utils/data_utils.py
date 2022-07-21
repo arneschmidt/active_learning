@@ -41,6 +41,8 @@ def get_instance_classes(dataframe, dataframe_raw, wsi_df, data_config, split):
     return dataframe
 
 def get_start_label_ids(dataframe, wsi_dataframe, data_config):
+    np.random.seed(int(globals.config['random_seed']))
+
     class_ids =  np.unique(dataframe['class'])
     number_wsis = data_config['active_learning']['start']['wsis_per_class']
     number_labels = data_config['active_learning']['start']['labels_per_class_and_wsi']
