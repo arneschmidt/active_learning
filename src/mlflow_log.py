@@ -99,7 +99,6 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
         metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
         metrics_for_monitoring = globals.config['model']['metrics_for_monitoring']
-        acc_threshold = globals.config['model']['acquisition']['after_acc_above']
 
         # If logging interval reached, calculate validation metrics
         if self.finished_epochs % globals.config['logging']['interval'] == 0:
@@ -123,17 +122,6 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
             new_lr = old_lr * 0.1
             K.set_value(self.model.optimizer.lr, new_lr)
             print('Reducing learning rate to: ' + str(new_lr))
-
-            # If not, check if model has converged
-            # else:
-            #     patience = globals.config['model']['acquisition']['after_epochs_of_no_improvement']
-            #     if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
-            #         # self.model.set_weights(self.best_weights)
-            #         # self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
-            #         old_lr = float(K.get_value(self.model.optimizer.lr))
-            #         new_lr = old_lr * 0.5
-            #         K.set_value(self.model.optimizer.lr, new_lr)
-            #         print('Reducing learning rate to: ' + str(new_lr))
 
     def on_train_end(self, logs=None):
         self.best_result_epoch = 0

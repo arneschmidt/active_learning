@@ -112,7 +112,7 @@ class ModelHandler:
                                                     restore_best_weights=True) #only take the best weights
         self.wsi_model.fit(data_gen.train_feat_gen,
                            validation_data=data_gen.val_feat_gen,
-                           epochs=100,
+                           epochs=300,
                            callbacks=[callback])
 
     def test(self, data_gen: DataGenerator, step=None):
