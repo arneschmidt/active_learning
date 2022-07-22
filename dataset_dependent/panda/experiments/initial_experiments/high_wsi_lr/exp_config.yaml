@@ -1,0 +1,7 @@
+model:
+  wsi_level_model:
+    use: True # if False, the wsi metrics will be calculated based on the patch classiciation
+    access_to_all_wsis: True # if False, only the acquired WSIs (with patch labels) are used for training
+    learning_rate: 0.01
+
+

@@ -1,0 +1,10 @@
+
+data:
+  dir: /data/BasesDeDatos/Panda/Panda_patches_center/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_center/dummy_200/
+  image_target_size: [300, 300]
+  active_learning:
+    start:
+      wsis_per_class: 5
+      labels_per_class_and_wsi: 5 # -1 (all) or number of labels per wsi
+

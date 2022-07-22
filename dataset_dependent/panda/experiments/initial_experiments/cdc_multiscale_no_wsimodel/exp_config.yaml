@@ -1,0 +1,8 @@
+model:
+  extra_wsi_level_model: False
+
+data:
+  dir: /data/BasesDeDatos/Panda/Panda_patches_center/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_center/dummy_200/
+
+

@@ -1,0 +1,10 @@
+data:
+  dir: /home/arne/data/Panda/Panda_patches_center/
+  data_split_dir: /home/arne/data/Panda/Panda_patches_center/
+  active_learning:
+    step:
+      total_steps: 100
+
+
+
+

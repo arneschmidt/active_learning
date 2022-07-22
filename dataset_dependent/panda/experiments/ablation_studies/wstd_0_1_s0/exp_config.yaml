@@ -1,0 +1,9 @@
+random_seed: 0
+model:
+  head:
+    bnn:
+      weight_std: 0.1
+
+
+
+

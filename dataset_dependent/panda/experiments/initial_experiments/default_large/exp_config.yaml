@@ -1,0 +1,6 @@
+
+data:
+  dir: /data/BasesDeDatos/Panda/Panda_patches_resized/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_resized/
+  image_target_size: [512, 512]
+

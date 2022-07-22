@@ -1,0 +1,9 @@
+model:
+  feature_extractor:
+    multiscale: False
+
+data:
+  dir: /data/BasesDeDatos/Panda/Panda_patches_act/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_act/dummy_200/
+  image_target_size: [256, 256]
+

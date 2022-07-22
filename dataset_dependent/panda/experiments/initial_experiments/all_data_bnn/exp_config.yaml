@@ -1,0 +1,12 @@
+model:
+  acquisition:
+    focussed_epistemic: False
+    aleatoric_factor: 0.0
+    ood_factor: 0.0
+
+data:
+  dataset_config: ./dataset_dependent/panda/config.yaml
+
+
+
+

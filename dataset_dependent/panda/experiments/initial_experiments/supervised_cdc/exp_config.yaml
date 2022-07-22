@@ -1,0 +1,14 @@
+model:
+  epochs: 15
+  feature_extractor:
+    multiscale: False
+
+data:
+  supervision: supervised # 'supervised', 'active_learning'ç
+  dir: /data/BasesDeDatos/Panda/Panda_patches_center/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_center/dummy_200/
+
+logging:
+  save_images: False
+  log_artifacts: True
+  interval: 1

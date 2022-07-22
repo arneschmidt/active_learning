@@ -1,0 +1,12 @@
+
+data:
+  dir: /data/BasesDeDatos/Panda/Panda_patches_act/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_act/dummy_200/
+  image_target_size: [300, 300]
+  active_learning:
+    start:
+      wsis_per_class: 1
+      labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
+    step:
+      total_steps: 100
+
