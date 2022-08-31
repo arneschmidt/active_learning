@@ -172,6 +172,10 @@ class ModelHandler:
         wsi_dataframe = data_gen.wsi_df
 
         wsis_per_acquisition = globals.config['data']['active_learning']['step']['wsis']
+        if globals.config['data']['active_learning']['step']['acceleration']:
+            if self.acquisition_step > globals.config['data']['active_learning']['step']['acceleration']['after_step']:
+                wsis_per_acquisition = globals.config['data']['active_learning']['step']['acceleration']['wsis']
+
         labels_per_wsi = globals.config['data']['active_learning']['step']['labels_per_wsi']
 
         if not globals.config['model']['acquisition']['random']:
