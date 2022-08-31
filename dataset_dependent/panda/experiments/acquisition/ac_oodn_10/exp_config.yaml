@@ -1,0 +1,5 @@
+model:
+  acquisition:
+    ood_k_neighbors: 10
+
+

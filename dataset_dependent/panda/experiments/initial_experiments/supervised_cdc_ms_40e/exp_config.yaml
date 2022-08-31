@@ -1,0 +1,15 @@
+model:
+  epochs: 40
+  lr_decrease_epochs: 10
+  feature_extractor:
+    multiscale: True
+
+data:
+  supervision: supervised # 'supervised', 'active_learning'
+  dir: /data/BasesDeDatos/Panda/Panda_patches_center/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_center/dummy_200/
+  image_target_size: [512, 512]
+
+logging:
+  save_images: False
+  interval: 1

@@ -36,6 +36,7 @@ def config_logging():
     mlflow.log_params(log_head_config)
     mlflow.log_params(config['model'])
     mlflow.log_params(config['data'])
+    mlflow.log_param('random_seed', config['random_seed'])
 
 
 def data_logging(data_dict):
@@ -89,13 +90,15 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
     #         metrics_dict = format_metrics_for_mlflow(logs.copy())
     #         mlflow.log_metrics(metrics_dict, step=current_step)
 
+    def on_train_begin(self, logs=None):
+        K.set_value(self.model.optimizer.lr, globals.config["model"]["learning_rate"])
+
     def on_epoch_end(self, epoch: int, logs=None):
-        current_step = int(self.finished_epochs * (self.acquisition_steps+1))
         self.finished_epochs = self.finished_epochs + 1
+        current_step = int(self.finished_epochs + (self.acquisition_steps*globals.config['model']['epochs']))
         metrics_dict = format_metrics_for_mlflow(logs.copy())
         mlflow.log_metrics(metrics_dict, step=current_step)
         metrics_for_monitoring = globals.config['model']['metrics_for_monitoring']
-        acc_threshold = globals.config['model']['acquisition']['after_acc_above']
 
         # If logging interval reached, calculate validation metrics
         if self.finished_epochs % globals.config['logging']['interval'] == 0:
@@ -111,9 +114,6 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
                 self.best_result = metrics_dict[metrics_for_monitoring]
                 self.best_metrics = metrics_dict
                 self.best_weights = self.model.get_weights()
-                if globals.config["model"]["save_model"]:
-                    print("\n New best model! Saving model..")
-                    self._save_model('acquisition_' + str(self.acquisition_steps))
                 mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
                 mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
         lr_decrease_epoch = globals.config['model']['lr_decrease_epochs']
@@ -123,31 +123,14 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
             K.set_value(self.model.optimizer.lr, new_lr)
             print('Reducing learning rate to: ' + str(new_lr))
 
-            # If not, check if model has converged
-            # else:
-            #     patience = globals.config['model']['acquisition']['after_epochs_of_no_improvement']
-            #     if patience < self.finished_epochs - self.best_result_epoch and logs['accuracy'] > acc_threshold:
-            #         # self.model.set_weights(self.best_weights)
-            #         # self.acquisition_step_metric[self.acquisition_steps] = metrics_dict
-            #         old_lr = float(K.get_value(self.model.optimizer.lr))
-            #         new_lr = old_lr * 0.5
-            #         K.set_value(self.model.optimizer.lr, new_lr)
-            #         print('Reducing learning rate to: ' + str(new_lr))
-
     def on_train_end(self, logs=None):
         self.best_result_epoch = 0
         self.best_result = 0.0
         if self.best_weights is not None:
             self.model.set_weights(self.best_weights)
         self.best_weights = None
-
-    def _save_model(self, name: str):
-        save_dir = os.path.join(globals.config["output_dir"], "models/" + name)
-        os.makedirs(save_dir, exist_ok=True)
-        fe_path = os.path.join(save_dir, "feature_extractor.h5")
-        head_path = os.path.join(save_dir, "head.h5")
-        self.model.layers[0].save_weights(fe_path)
-        self.model.layers[1].save_weights(head_path)
+        self.finished_epochs = 0
+        self.acquisition_steps = self.acquisition_steps + 1
 
 
 def format_metrics_for_mlflow(metrics_dict):

@@ -1,0 +1,23 @@
+data:
+  dir: /data/BasesDeDatos/Panda/Panda_patches_center/
+  data_split_dir: /data/BasesDeDatos/Panda/Panda_patches_center/dummy_200/
+  active_learning:
+    start:
+      wsis_per_class: 5
+      labels_per_class_and_wsi: 5 # -1 (all) or number of labels per wsi
+    step:
+      wsis: 10
+      labels_per_wsi: 5
+      flexible_labeling: True # if True, the labels of one step can be distributed freely within the selected WSIs
+      total_steps: 18
+
+model:
+  acquisition:
+    ood_factor: 2.0
+    ood_k_neighbors: 50
+  head:
+    type: bnn # deterministic, bnn
+    bnn:
+      weight_std: 0.1
+
+

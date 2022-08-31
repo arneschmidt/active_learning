@@ -1,3 +1,4 @@
+import globals
 import pandas as pd
 import numpy as np
 from sklearn.metrics import accuracy_score, cohen_kappa_score, f1_score, confusion_matrix
@@ -40,7 +41,7 @@ class MetricCalculator():
         artifacts = {}
         if self.metrics_patch_level:
             metrics.update(self.calc_patch_level_metrics(test_predictions, test_dataframe))
-        if self.metrics_wsi_level:
+        if self.metrics_wsi_level and mode=='test':
             # implement wsi model evaluation
             wsi_metrics, artifacts = self.calc_optimal_wsi_metrics(val_predictions, test_predictions, test_dataframe)
             metrics.update(wsi_metrics)
@@ -56,14 +57,14 @@ class MetricCalculator():
         Obtain model predictions for validation and/or test data.
         :return: val_predictions, test_predictions
         """
-        model_handler = self.model_handler
+        patch_model = self.model_handler.patch_model
         data_gen = self.data_gen
         if split == 'val':
             val_gen = self.val_gen
-            predictions = model_handler.predict(val_gen)
+            predictions = patch_model.predict(val_gen)
         else:
             test_gen = self.test_gen
-            predictions = model_handler.predict(test_gen)
+            predictions = patch_model.predict(test_gen)
 
         return predictions
 
@@ -97,10 +98,17 @@ class MetricCalculator():
         :param test_predictions:
         :return:
         """
-        # confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
-        confidence_threshold = 0.0
-        metrics_dict, artifacts, _ = self.calc_wsi_metrics(test_predictions, test_dataframe, confidence_threshold)
-        metrics_dict['confidence_threshold'] = confidence_threshold
+        if globals.config['model']['wsi_level_model']['use']:
+            metrics = self.model_handler.wsi_model.evaluate(self.data_gen.test_feat_gen)
+            metrics_dict = {}
+            metrics_dict['wsi_isup_cohens_quadratic_kappa'] = metrics[3]
+            metrics_dict['wsi_isup_f1_score'] = np.mean(metrics[2])
+            artifacts = {}
+        else:
+            # confidence_threshold = self.calc_optimal_confidence_threshold(val_predictions, self.val_df)
+            confidence_threshold = 0.0
+            metrics_dict, artifacts, _ = self.calc_wsi_metrics(test_predictions, test_dataframe, confidence_threshold)
+            metrics_dict['confidence_threshold'] = confidence_threshold
         return metrics_dict, artifacts
 
     def calc_wsi_metrics(self, predictions: np.array, gt_df, confidence_threshold: float):

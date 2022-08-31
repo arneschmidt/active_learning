@@ -11,15 +11,29 @@ from tensorflow.keras.applications.resnet50 import ResNet50
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Dense, Conv2D, Dropout, MaxPool2D, Flatten, GlobalMaxPool2D, SeparableConv2D
 from tensorflow_probability.python.layers import util as tfp_layers_util
-
+from utils.layers import Mil_Attention
 import globals
+
 
 def create_model(num_training_points: int):
     feature_extractor = create_feature_extactor()
-    head = create_head(num_training_points)
+    head = create_head(num_training_points, kl_factor=globals.config["model"]["head"]["bnn"]["kl_loss_factor"],
+                       num_classes=globals.config['data']['num_classes'])
     
     model = Sequential([feature_extractor, head])
     return model
+
+
+def create_wsi_level_model(num_training_points: int):
+    #    ValueError: Shapes (None, 1) and (1, 6) are incompatible
+    if globals.config['model']['wsi_level_model']['use']:
+        attention_module = create_attention_module()
+        head = create_head(num_training_points, kl_factor=0.1, num_classes=6)
+        wsi_model = Sequential([attention_module, head])
+    else:
+        wsi_model = None
+    return wsi_model
+
 
 def create_feature_extactor():
     feature_extractor_type = globals.config["model"]["feature_extractor"]["type"]
@@ -126,11 +140,10 @@ def create_feature_extactor():
     return feature_extractor
 
 
-def create_head(num_training_points: int):
+def create_head(num_training_points: int, kl_factor=1.0, num_classes=5):
         config = globals.config
         head_type = config["model"]["head"]["type"]
 
-        num_classes = config['data']['num_classes']
         if head_type == "deterministic":
             hidden_units = config["model"]["head"]["deterministic"]["number_hidden_units"]
             dropout_rate = config["model"]["head"]["deterministic"]["dropout"]
@@ -147,7 +160,7 @@ def create_head(num_training_points: int):
             weight_std = config["model"]["head"]["bnn"]["weight_std"]
             weight_std_softplusinv = tfp.math.softplus_inverse(weight_std)
 
-            kl_factor =  tf.Variable(initial_value=config["model"]["head"]["bnn"]["kl_loss_factor"], trainable=False, dtype=tf.float32)
+            kl_factor = tf.Variable(initial_value=kl_factor, trainable=False, dtype=tf.float32)
             tfd = tfp.distributions
             # scaling of KL divergence to batch is included already, scaling to dataset size needs to be done
             kl_divergence_function = (lambda q, p, _: tfd.kl_divergence(q, p) * tf.cast(kl_factor / num_training_points, dtype=tf.float32))   #  tf.cast(num_training_points, dtype=tf.float32))
@@ -184,4 +197,23 @@ def create_head(num_training_points: int):
         else:
             raise Exception("Choose valid model head!")
         return head
+
+def create_attention_module():
+    def attention_multiplication(i):
+        # a = tf.ones_like(i[0])
+        a = i[0]
+        f = i[1]
+        # tf.print('attention', a)
+        # tf.print('features', f)
+        a = tf.reshape(a, shape=[-1])
+        out = tf.linalg.matvec(f, a, transpose_a=True)
+        out = tf.reshape(out, [1, f.shape[1]])
+        return out
+
+    data_dims = globals.config["model"]["feature_extractor"]["num_output_features"]
+    input = tf.keras.layers.Input(shape=(data_dims))
+    a = Mil_Attention(L_dim=128, output_dim=0, name='instance_softmax', use_gated=True)(input)
+    output = tf.keras.layers.Lambda(attention_multiplication)([a, input])
+    attention_module = tf.keras.Model(inputs=input, outputs=output, name="attention_module")
+    return attention_module
 

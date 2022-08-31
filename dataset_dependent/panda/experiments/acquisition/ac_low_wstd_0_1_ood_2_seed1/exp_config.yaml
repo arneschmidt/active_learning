@@ -1,0 +1,9 @@
+random_seed: 1
+model:
+  head:
+    bnn:
+      weight_std: 0.1
+  acquisition:
+    ood_factor: 2.0
+
+

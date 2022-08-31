@@ -1,0 +1,2 @@
+python src/main.py -dc ../../experiments/panda/experiments/acquisition/config.yaml -ef ../../experiments/panda/experiments/acquisition/ac_low_wstd_0_1_ood_4
+python src/main.py -dc ../../experiments/panda/experiments/acquisition/config.yaml -ef ../../experiments/panda/experiments/acquisition/ac_low_wstd_0_1_ood_4_seed1

@@ -1,0 +1,6 @@
+model:
+  head:
+    bnn:
+      weight_std: 0.1
+
+

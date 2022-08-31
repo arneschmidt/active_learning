@@ -17,6 +17,7 @@ from model_handler import ModelHandler
 from mlflow_log import start_logging, data_logging
 
 
+
 def main():
     # Only necessary if certain GPUs are used (like nvidia 2060rtx)
     # devices = tf.config.experimental.list_physical_devices('GPU')

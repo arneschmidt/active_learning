@@ -62,7 +62,7 @@ def save_roc(roc, output_dir):
     np.savetxt(os.path.join(output_dir, 'thresholds.csv'), roc['thresholds'], delimiter=",")
 
 
-def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, train_indices, acquisition_step):
+def save_acquired_images(data_gen, train_indices, highest_uncertainty_dfs, acquisition_step):
     data_dir = globals.config['data']["dir"]
     out_dir = globals.config['logging']['experiment_folder']
     out_dir = os.path.join(out_dir, str(acquisition_step))
@@ -75,37 +75,35 @@ def save_acquired_images(data_gen, highest_unc_indices, highest_unc_values, trai
     os.makedirs(out_dir_acq_masks, exist_ok=True)
 
     os.makedirs(out_dir_acq, exist_ok=True)
-    for i in range(train_indices.shape[0]):
 
-        file = data_gen.train_df['image_path'].loc[train_indices[i]]
-        path = os.path.join(data_dir, file)
-        shutil.copy(path, out_dir_acq_images)
-        mask_path = path.replace('/images/', '/masks/')
-        shutil.copy(mask_path, out_dir_acq_masks)
+    assert np.all(np.array(data_gen.train_df['image_path'].loc[train_indices]) == highest_uncertainty_dfs['acquisition']['image_path'])
+    # data_gen.train_df['image_path'].loc[train_indices].to_csv(os.path.join(out_dir_acq, 'dataframe.csv'))
+    # acquired_images = np.array(data_gen.train_df['image_path'].loc[train_indices])
+    #
+    # for i in range(acquired_images.shape[0]):
+    #     file = acquired_images[i]
+    #     path = os.path.join(data_dir, file)
+    #     shutil.copy(path, out_dir_acq_images)
+    #     mask_path = path.replace('/images/', '/masks/')
+    #     shutil.copy(mask_path, out_dir_acq_masks)
 
-    for unc in highest_unc_indices.keys():
+    for unc in highest_uncertainty_dfs.keys():
         out_dir_unc = os.path.join(out_dir, unc)
         out_dir_unc_images = os.path.join(out_dir_unc, 'images')
         out_dir_unc_masks = os.path.join(out_dir_unc, 'masks')
         os.makedirs(out_dir_unc_images, exist_ok=True)
         os.makedirs(out_dir_unc_masks, exist_ok=True)
 
-        top_unc = highest_unc_indices[unc]
-        images = []
-        uncertainties = []
-        for i in range(top_unc.shape[0]):
-            file = data_gen.train_df['image_path'].loc[top_unc[i]]
-            images.append(str(file))
-            uncertainties.append(highest_unc_values[unc][i])
+        highest_uncertainty_dfs[unc].to_csv(os.path.join(out_dir_unc, 'dataframe.csv'))
+        image_names = np.array(highest_uncertainty_dfs[unc]['image_path'])
+
+        for i in range(len(image_names)):
+            file = image_names[i]
             path = os.path.join(data_dir, file)
             shutil.copy(path, out_dir_unc_images)
 
             mask_path = path.replace('/images/', '/masks/')
             shutil.copy(mask_path, out_dir_unc_masks)
 
-        out_df = pd.DataFrame()
-        out_df['image'] = np.array(images)
-        out_df['unc'] = np.array(uncertainties)
-        out_df.to_csv(os.path.join(out_dir_unc, 'uncertainties.csv'))
 
 

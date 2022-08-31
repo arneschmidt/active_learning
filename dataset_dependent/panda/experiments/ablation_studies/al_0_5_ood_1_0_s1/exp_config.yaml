@@ -1,0 +1,9 @@
+random_seed: 1
+model:
+  acquisition:
+    aleatoric_factor: 0.5
+    ood_factor: 1.0
+
+
+
+

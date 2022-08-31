@@ -7,7 +7,7 @@ import tensorflow_addons as tfa
 import numpy as np
 import pandas as pd
 from mlflow_log import MLFlowCallback, log_and_store_metrics, log_artifacts
-from model_architecture import create_model
+from model_architecture import create_model, create_wsi_level_model
 from sklearn.neighbors import LocalOutlierFactor
 from utils.save_utils import save_dataframe_with_output, save_metrics_artifacts, save_acquired_images
 from metrics import MetricCalculator
@@ -24,20 +24,20 @@ class ModelHandler:
         self.n_training_points = n_training_points
         self.acquisition_step = 0
         self.uncertainty_logs = {}
+        self.highest_uncertainty_dfs = {}
         self.class_weights = {}
         config = globals.config
         self.batch_size = config["model"]["batch_size"]
         self.num_classes = config["data"]["num_classes"]
-        self.model = create_model(n_training_points)
+        self.patch_model = create_model(n_training_points)
+        self.wsi_model = create_wsi_level_model(globals.config['data']['active_learning']['start']['wsis_per_class'])
         if config["model"]["load_model"] != 'None':
             self._load_combined_model(config["model"]["load_model"])
         self.ood_estimator = None
-        self._compile_model()
-        self.highest_unc_indices = {}
-        self.highest_unc_values = {}
+        self._compile_models()
 
-        print(self.model.layers[0].summary())
-        print(self.model.layers[1].summary())
+        print(self.patch_model.layers[0].summary())
+        print(self.patch_model.layers[1].summary())
 
     def train(self, data_gen: DataGenerator):
         """
@@ -71,30 +71,49 @@ class ModelHandler:
                 class_weights = []
 
             steps = np.ceil(data_gen.get_number_of_training_points() / self.batch_size)
-            self.model.fit(
+            print('### Train patch model ### ')
+            self.patch_model.fit(
                 data_gen.train_generator_labeled,
                 epochs=globals.config['model']['epochs'],
                 class_weight=class_weights,
                 steps_per_epoch=steps,
                 callbacks=callbacks,
             )
-            # create_wsi_dataset
-            # self.wsi_model.fit(wsi_data)
+            print('### Make feature predictions ### ')
+            train_feat, val_feat, test_feat = self.make_feature_predictions(data_gen)
+            if globals.config['model']['wsi_level_model']['use']:
+                self.train_wsi_level_model(data_gen, train_feat, val_feat, test_feat)
+            if globals.config["model"]["save_model"]:
+                print("\n Saving model..")
+                self._save_models(acquisition_step)
             if globals.config['model']['test_on_the_fly']:
                 self.test(data_gen, step=self.n_training_points)
 
             if globals.config['data']['supervision'] == 'active_learning':
                 mlflow.log_metrics(self.uncertainty_logs, self.n_training_points)
-                selected_wsis, train_indices = self.select_data_for_labeling(data_gen)
+                selected_wsis, train_indices = self.select_data_for_labeling(data_gen, train_feat)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
                 self.n_training_points = data_gen.get_number_of_training_points()
-                self.update_model(self.n_training_points)
+                self.update_model(self.n_training_points, int(np.sum(data_gen.wsi_df['labeled'])))
 
                 if globals.config['logging']['save_images']:
-                    save_acquired_images(data_gen, self.highest_unc_indices, self.highest_unc_values, train_indices, acquisition_step)
+                    save_acquired_images(data_gen, train_indices, self.highest_uncertainty_dfs, acquisition_step)
 
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
+
+    def train_wsi_level_model(self, data_gen, train_feat, val_feat, test_feat):
+        print('### Create WSI level data ### ')
+        if not globals.config['model']['wsi_level_model']['access_to_all_wsis']:
+            train_feat = train_feat[np.logical_not(data_gen.train_df['available_for_query'])]
+        data_gen.create_wsi_level_dataset(train_feat, val_feat, test_feat)
+        print('### Train WSI level model ### ')
+        callback = tf.keras.callbacks.EarlyStopping(monitor='val_cohen_kappa',patience=1000, mode='max',
+                                                    restore_best_weights=True) #only take the best weights
+        self.wsi_model.fit(data_gen.train_feat_gen,
+                           validation_data=data_gen.val_feat_gen,
+                           epochs=300,
+                           callbacks=[callback])
 
     def test(self, data_gen: DataGenerator, step=None):
         """
@@ -102,7 +121,7 @@ class ModelHandler:
         :param data_gen: data generator object to provide the image data generators and dataframes
         :return: dict of metrics from testing
         """
-        metric_calculator = MetricCalculator(self.model, data_gen, globals.config)
+        metric_calculator = MetricCalculator(self, data_gen, globals.config)
         metrics, artifacts = metric_calculator.calc_metrics(mode='test')
         save_metrics_artifacts(artifacts, globals.config['logging']['experiment_folder'])
         log_and_store_metrics(metrics, step)
@@ -120,12 +139,12 @@ class ModelHandler:
         return preds
 
     def get_features(self, ds):
-        feature_extractor = self.model.layers[0]
+        feature_extractor = self.patch_model.layers[0]
         features = feature_extractor.predict(ds, verbose=1)
         return features
 
     def get_predictions(self, features):
-        head = self.model.layers[1]
+        head = self.patch_model.layers[1]
 
         if globals.config['model']['head']['type'] == 'bnn':
             num_samples = 20
@@ -138,7 +157,16 @@ class ModelHandler:
 
         return preds
 
-    def select_data_for_labeling(self, data_gen: DataGenerator):
+    def make_feature_predictions(self, data_gen: DataGenerator):
+        train_instances_ordered = data_gen.data_generator_from_dataframe(data_gen.train_df,
+                                                                        image_augmentation=False,
+                                                                        shuffle=False)
+        train_feat = self.get_features(train_instances_ordered)
+        val_feat = self.get_features(data_gen.validation_generator)
+        test_feat = self.get_features(data_gen.test_generator)
+        return train_feat, val_feat, test_feat
+
+    def select_data_for_labeling(self, data_gen: DataGenerator, train_features):
         print('Select data to be labeled..')
         unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
         wsi_dataframe = data_gen.wsi_df
@@ -147,15 +175,17 @@ class ModelHandler:
         labels_per_wsi = globals.config['data']['active_learning']['step']['labels_per_wsi']
 
         if not globals.config['model']['acquisition']['random']:
-            features = self.get_features(data_gen.train_generator_unlabeled)
-            preds = self.get_predictions(features)
+            # features_unlabeled = self.get_features(data_gen.train_generator_unlabeled)
+            features_unlabeled = train_features[data_gen.train_df['available_for_query']]
+            preds = self.get_predictions(features_unlabeled)
 
-            features_labeled = self.get_features(data_gen.train_generator_labeled)
-
+            # features_labeled = self.get_features(data_gen.train_generator_labeled)
+            features_labeled = train_features[data_gen.train_df['labeled']]
             if globals.config['model']['acquisition']['focussed_epistemic']:
                 self.update_ood_estimator(features_labeled)
 
-            acquisition_scores = self.get_acquisition_scores(preds, features)
+            acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features_unlabeled)
+
             sorted_rows = np.argsort(acquisition_scores)[::-1]
 
             unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
@@ -186,8 +216,7 @@ class ModelHandler:
                 else:
                     candidates = np.squeeze(np.argwhere(np.array(unlabeled_dataframe['wsi']==wsi)))
                     wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
-                wsi_ids = unlabeled_dataframe['index'].iloc[wsi_rows].values[:] # convert to train_df reference
-                ids = np.concatenate([ids, wsi_ids], axis=None)
+                ids = np.concatenate([ids, wsi_rows], axis=None)
             if ids.size != wsis_per_acquisition*labels_per_wsi:
                 print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
                 print('Requested labels: ', ids.size)
@@ -197,39 +226,46 @@ class ModelHandler:
             for row in sorted_rows:
                 if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis:
                     unlabeled_ids.append(row)
-                if len(unlabeled_ids) > wsis_per_acquisition*labels_per_wsi:
+                if len(unlabeled_ids) >= wsis_per_acquisition*labels_per_wsi:
                     break
-            ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
-
+        ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
+        if not globals.config['model']['acquisition']['random']:
+            self.store_dataframes_for_logging(data_gen, unlabeled_ids, acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc)
         return selected_wsis, ids
 
-    def update_model(self, num_training_points: int):
-        weights = self.model.get_weights()
+    def update_model(self, num_training_points: int, num_labeled_wsi: int):
+        patch_model_weights = self.patch_model.get_weights()
+
         new_model = create_model(num_training_points)
         if globals.config['model']['acquisition']['keep_trained_weights']:
-            new_model.set_weights(weights)
-        self.model = new_model
-        self._compile_model()
+            new_model.set_weights(patch_model_weights)
+        self.patch_model = new_model
+        if globals.config['model']['wsi_level_model']['use']:
+            wsi_model_weights = self.wsi_model.get_weights()
+            new_wsi_model = create_wsi_level_model(num_labeled_wsi)
+            if globals.config['model']['acquisition']['keep_trained_weights']:
+                new_wsi_model.set_weights(wsi_model_weights)
+            self.wsi_model = new_wsi_model
+        self._compile_models()
 
     def update_class_weights(self, class_weights):
         self.class_weights = class_weights
 
     def update_ood_estimator(self, features_labeled):
-        features = np.expand_dims(np.mean(features_labeled, axis=1), axis=1)
-
+        features = features_labeled
         ood_k_neighbors = globals.config['model']['acquisition']['ood_k_neighbors']
         ood_estimator = LocalOutlierFactor(n_neighbors=ood_k_neighbors, novelty=True)
         ood_estimator.fit(features)
 
         self.ood_estimator = ood_estimator
 
-    def _compile_model(self):
+    def _compile_models(self):
         """
         Compile keras model.
         """
         input_shape = (self.batch_size, globals.config["data"]["image_target_size"][0],
                        globals.config["data"]["image_target_size"][1], 3)
-        self.model.build(input_shape)
+        self.patch_model.build(input_shape)
 
         if globals.config['model']['optimizer'] == 'sgd':
             optimizer = tf.optimizers.SGD(learning_rate=globals.config["model"]["learning_rate"])
@@ -241,13 +277,21 @@ class ModelHandler:
         else:
             loss = tf.keras.losses.CategoricalCrossentropy(reduction=tf.keras.losses.Reduction.SUM_OVER_BATCH_SIZE)
 
-
-        self.model.compile(optimizer=optimizer,
-                           loss=loss,
-                           metrics=['accuracy',
+        self.patch_model.compile(optimizer=optimizer,
+                                 loss=loss,
+                                 metrics=['accuracy',
                                     tfa.metrics.F1Score(num_classes=self.num_classes),
                                     tfa.metrics.CohenKappa(num_classes=self.num_classes, weightage='quadratic')
                                     ])
+        if globals.config['model']['wsi_level_model']['use']:
+            wsi_classes = 6
+            self.wsi_model.build(input_shape)
+            self.wsi_model.compile(optimizer=tf.optimizers.Adam(learning_rate=globals.config['model']['wsi_level_model']['learning_rate']),
+                               loss=tf.keras.losses.CategoricalCrossentropy(),
+                               metrics=['accuracy',
+                                        tfa.metrics.F1Score(num_classes=wsi_classes),
+                                        tfa.metrics.CohenKappa(num_classes=wsi_classes, weightage='quadratic')
+                                        ])
 
 
     def _calculate_most_uncertain_class(self, val_metrics: Dict):
@@ -262,9 +306,9 @@ class ModelHandler:
 
     def _load_combined_model(self, artifact_path: str = "./models/"):
         model_path = os.path.join(artifact_path, "models")
-        self.model.layers[0].load_weights(os.path.join(model_path, "feature_extractor.h5"))
-        self.model.layers[1].load_weights(os.path.join(model_path, "head.h5"))
-        self.model.summary()
+        self.patch_model.layers[0].load_weights(os.path.join(model_path, "feature_extractor.h5"))
+        self.patch_model.layers[1].load_weights(os.path.join(model_path, "head.h5"))
+        self.patch_model.summary()
 
     def _save_predictions(self, image_batch: np.array, predictions: np.array, output_dir: str):
         for i in range(image_batch[0].shape[0]):
@@ -339,12 +383,8 @@ class ModelHandler:
                 aleatoric_unc.append(0)
                 epistemic_unc.append(self._calc_deterministic_entropy(preds[i]))
 
-
         aleatoric_unc = np.array(aleatoric_unc)
         epistemic_unc = np.array(epistemic_unc)
-
-        self.store_highest_uncertainty_indices(aleatoric_unc, 'aleatoric_unc')
-        self.store_highest_uncertainty_indices(epistemic_unc, 'epistemic_unc')
 
         self.uncertainty_logs['aleatoric_unc_mean'] = np.mean(aleatoric_unc)
         self.uncertainty_logs['aleatoric_unc_min'] = np.min(aleatoric_unc)
@@ -358,14 +398,14 @@ class ModelHandler:
 
     def get_ood_probabilities(self, features):
         if globals.config['model']['acquisition']['focussed_epistemic']:
-            features = np.expand_dims(np.mean(features, axis=1), axis=1)
+            # features = np.expand_dims(np.mean(features, axis=1), axis=1)
             in_distribution_prob = self.ood_estimator.score_samples(features)
             in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
                                  (np.max(in_distribution_prob) - np.min(in_distribution_prob))
             ood_score = 1 - in_dist_normalized
-
-            self.store_highest_uncertainty_indices(ood_score, 'ood_score')
-
+            normalization_mean = 0.1
+            ood_score = normalization_mean * ood_score / np.mean(ood_score)
+            self.uncertainty_logs['ood_in_dist_prob_mean'] = np.mean(in_distribution_prob)
             self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
             self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
             self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
@@ -384,16 +424,44 @@ class ModelHandler:
 
         acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
 
-        self.store_highest_uncertainty_indices(acq_scores, 'acq_scores')
         self.uncertainty_logs['acq_scores_mean'] = np.mean(acq_scores)
         self.uncertainty_logs['acq_scores_min'] = np.min(acq_scores)
         self.uncertainty_logs['acq_scores_max'] = np.max(acq_scores)
 
-        return acq_scores
+        return acq_scores, epistemic_unc, aleatoric_unc, ood_prob
 
-    def store_highest_uncertainty_indices(self, unc, name):
-        n = 10
-        sorted_ids = np.argsort(unc)[::-1]
-        self.highest_unc_indices[name] = sorted_ids[0:n]
-        self.highest_unc_values[name] = unc[sorted_ids[0:n]]
+    def store_dataframes_for_logging(self, data_gen, acquisition_ids, acq_scores, epistemic_unc, aleatoric_unc, ood_unc):
+
+        unc_names = ['acq_scores', 'epistemic_unc', 'aleatoric_unc', 'ood_unc']
+        uncs = [acq_scores, epistemic_unc, aleatoric_unc, ood_unc]
+        unlabeled_dataframe = data_gen.train_df.loc[data_gen.train_df['available_for_query']]
+
+        # add uncertainties to dataframe
+        for i in range(len(unc_names)):
+            unlabeled_dataframe[unc_names[i]] = uncs[i]
+
+        # store dataframes of acquisition and all uncertainties
+        self.highest_uncertainty_dfs['acquisition'] = unlabeled_dataframe.iloc[acquisition_ids]
+        for i in range(len(unc_names)):
+            unc_name = unc_names[i]
+            unc = uncs[i]
+            n = 20
+            sorted_ids = np.argsort(unc)[::-1][:n]
+            self.highest_uncertainty_dfs[unc_name] = unlabeled_dataframe.iloc[sorted_ids]
+
+    def _save_models(self, acquisition_step):
+        save_dir = os.path.join(globals.config['logging']['experiment_folder'], str(acquisition_step))
+        os.makedirs(save_dir, exist_ok=True)
+        save_dir = os.path.join(save_dir, "models/")
+        os.makedirs(save_dir, exist_ok=True)
+        print('Save models in: ' + save_dir)
+        os.makedirs(save_dir, exist_ok=True)
+        fe_path = os.path.join(save_dir, "feature_extractor.h5")
+        patch_head_path = os.path.join(save_dir, "patch_head.h5")
+        self.patch_model.layers[0].save_weights(fe_path)
+        self.patch_model.layers[1].save_weights(patch_head_path)
+        if self.wsi_model is not None:
+            wsi_head_path = os.path.join(save_dir, "wsi_head.h5")
+            self.wsi_model.save_weights(wsi_head_path)
+
 
