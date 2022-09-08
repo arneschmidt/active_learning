@@ -109,13 +109,16 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
             mlflow.log_metric("lr", float(K.get_value(self.model.optimizer.lr)), step=current_step)
 
             # If new best result, save model and set best epoch
-            if metrics_dict[metrics_for_monitoring] > self.best_result:
-                self.best_result_epoch = self.finished_epochs
-                self.best_result = metrics_dict[metrics_for_monitoring]
-                self.best_metrics = metrics_dict
-                self.best_weights = self.model.get_weights()
-                mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
-                mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
+            if metrics_for_monitoring != 'None':
+                if metrics_dict[metrics_for_monitoring] > self.best_result:
+                    self.best_result_epoch = self.finished_epochs
+                    self.best_result = metrics_dict[metrics_for_monitoring]
+                    self.best_metrics = metrics_dict
+                    self.best_weights = self.model.get_weights()
+                    mlflow.log_metric("best_" + metrics_for_monitoring, metrics_dict[metrics_for_monitoring], step=current_step)
+                    mlflow.log_metric("best_epoch", self.finished_epochs, step=current_step)
+            else:
+                self.best_weights = None
         lr_decrease_epoch = globals.config['model']['lr_decrease_epochs']
         if lr_decrease_epoch != -1 and self.finished_epochs == lr_decrease_epoch:
             old_lr = float(K.get_value(self.model.optimizer.lr))
