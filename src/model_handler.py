@@ -172,6 +172,7 @@ class ModelHandler:
         wsi_dataframe = data_gen.wsi_df
 
         wsis_per_acquisition = globals.config['data']['active_learning']['step']['wsis']
+        wsi_independent_labeling = globals.config['data']['active_learning']['step']['wsi_independent_labeling']
         if globals.config['data']['active_learning']['step']['acceleration']:
             if self.acquisition_step > globals.config['data']['active_learning']['step']['acceleration']['after_step']:
                 wsis_per_acquisition = globals.config['data']['active_learning']['step']['acceleration']['wsis']
@@ -191,15 +192,17 @@ class ModelHandler:
             acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features_unlabeled)
 
             sorted_rows = np.argsort(acquisition_scores)[::-1]
-
-            unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
-                                                                          wsi_dataframe['Partition'] == 'train')])
-            mean_uncertainties= np.zeros_like(unlabeled_wsis)
-            for i in range(len(unlabeled_wsis)):
-                rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
-                mean_uncertainties[i] = np.mean(acquisition_scores[rows])
-            sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
-            selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+            if not wsi_independent_labeling:
+                unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                              wsi_dataframe['Partition'] == 'train')])
+                mean_uncertainties= np.zeros_like(unlabeled_wsis)
+                for i in range(len(unlabeled_wsis)):
+                    rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
+                    mean_uncertainties[i] = np.mean(acquisition_scores[rows])
+                sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
+                selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+            else:
+                selected_wsis = []
         else:
             unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
                                                                           wsi_dataframe['Partition'] == 'train')]
@@ -228,7 +231,7 @@ class ModelHandler:
         else:
             unlabeled_ids = [] # reference to unlabeled dataframe
             for row in sorted_rows:
-                if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis:
+                if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis or wsi_independent_labeling:
                     unlabeled_ids.append(row)
                 if len(unlabeled_ids) >= wsis_per_acquisition*labels_per_wsi:
                     break
