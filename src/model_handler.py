@@ -208,7 +208,7 @@ class ModelHandler:
         # get the highest uncertainties of the selected WSIs
 
         if not globals.config['data']['active_learning']['step']['flexible_labeling']:
-            ids = np.array([]) # reference to unlabeled dataframe
+            unlabeled_ids = np.array([]) # reference to unlabeled dataframe
             for wsi in selected_wsis:
                 wsi_rows = np.array([])
                 if not globals.config['model']['acquisition']['random']:
@@ -220,10 +220,10 @@ class ModelHandler:
                 else:
                     candidates = np.squeeze(np.argwhere(np.array(unlabeled_dataframe['wsi']==wsi)))
                     wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
-                ids = np.concatenate([ids, wsi_rows], axis=None)
-            if ids.size != wsis_per_acquisition*labels_per_wsi:
+                unlabeled_ids = np.concatenate([unlabeled_ids, wsi_rows], axis=None)
+            if unlabeled_ids.size != wsis_per_acquisition*labels_per_wsi:
                 print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
-                print('Requested labels: ', ids.size)
+                print('Requested labels: ', unlabeled_ids.size)
                 print('Not enough labels obtained!')
         else:
             unlabeled_ids = [] # reference to unlabeled dataframe
