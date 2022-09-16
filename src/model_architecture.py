@@ -137,6 +137,7 @@ def create_feature_extactor():
     # feature_extractor.build(input_shape=input_shape)
     output = x
     feature_extractor = tf.keras.Model(inputs=input, outputs=output, name="feature_extractor")
+    # feature_extractor.summary()
     return feature_extractor
 
 

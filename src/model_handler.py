@@ -406,13 +406,9 @@ class ModelHandler:
     def get_ood_probabilities(self, features):
         if globals.config['model']['acquisition']['focussed_epistemic']:
             # features = np.expand_dims(np.mean(features, axis=1), axis=1)
-            in_distribution_prob = self.ood_estimator.score_samples(features)
-            in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
-                                 (np.max(in_distribution_prob) - np.min(in_distribution_prob))
-            ood_score = 1 - in_dist_normalized
-            normalization_mean = 0.1
-            ood_score = normalization_mean * ood_score / np.mean(ood_score)
-            self.uncertainty_logs['ood_in_dist_prob_mean'] = np.mean(in_distribution_prob)
+            lof = - self.ood_estimator.score_samples(features)
+            m = 0.1
+            ood_score = m * lof
             self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
             self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
             self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
