@@ -110,7 +110,7 @@ class MLFlowCallback(tf.keras.callbacks.Callback):
 
             # If new best result, save model and set best epoch
             if metrics_for_monitoring != 'None':
-                if metrics_dict[metrics_for_monitoring] > self.best_result:
+                if metrics_dict[metrics_for_monitoring] > self.best_result and self.finished_epochs > 100:
                     self.best_result_epoch = self.finished_epochs
                     self.best_result = metrics_dict[metrics_for_monitoring]
                     self.best_metrics = metrics_dict
