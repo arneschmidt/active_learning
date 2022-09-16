@@ -63,20 +63,21 @@ def save_roc(roc, output_dir):
 
 
 def save_acquired_images(data_gen, train_indices, highest_uncertainty_dfs, acquisition_step):
-    data_dir = globals.config['data']["dir"]
-    out_dir = globals.config['logging']['experiment_folder']
-    out_dir = os.path.join(out_dir, str(acquisition_step))
-    os.makedirs(out_dir, exist_ok=True)
-    data_gen.wsi_df.to_csv(os.path.join(out_dir, 'wsi_df.csv'))
-    out_dir_acq = os.path.join(out_dir, 'acquisition')
-    out_dir_acq_images = os.path.join(out_dir_acq, 'images')
-    out_dir_acq_masks = os.path.join(out_dir_acq, 'masks')
-    os.makedirs(out_dir_acq_images, exist_ok=True)
-    os.makedirs(out_dir_acq_masks, exist_ok=True)
+    if bool(highest_uncertainty_dfs):
+        data_dir = globals.config['data']["dir"]
+        out_dir = globals.config['logging']['experiment_folder']
+        out_dir = os.path.join(out_dir, str(acquisition_step))
+        os.makedirs(out_dir, exist_ok=True)
+        data_gen.wsi_df.to_csv(os.path.join(out_dir, 'wsi_df.csv'))
+        out_dir_acq = os.path.join(out_dir, 'acquisition')
+        out_dir_acq_images = os.path.join(out_dir_acq, 'images')
+        out_dir_acq_masks = os.path.join(out_dir_acq, 'masks')
+        os.makedirs(out_dir_acq_images, exist_ok=True)
+        os.makedirs(out_dir_acq_masks, exist_ok=True)
 
-    os.makedirs(out_dir_acq, exist_ok=True)
+        os.makedirs(out_dir_acq, exist_ok=True)
 
-    assert np.all(np.array(data_gen.train_df['image_path'].loc[train_indices]) == highest_uncertainty_dfs['acquisition']['image_path'])
+        assert np.all(np.array(data_gen.train_df['image_path'].loc[train_indices]) == highest_uncertainty_dfs['acquisition']['image_path'])
     # data_gen.train_df['image_path'].loc[train_indices].to_csv(os.path.join(out_dir_acq, 'dataframe.csv'))
     # acquired_images = np.array(data_gen.train_df['image_path'].loc[train_indices])
     #
@@ -87,23 +88,23 @@ def save_acquired_images(data_gen, train_indices, highest_uncertainty_dfs, acqui
     #     mask_path = path.replace('/images/', '/masks/')
     #     shutil.copy(mask_path, out_dir_acq_masks)
 
-    for unc in highest_uncertainty_dfs.keys():
-        out_dir_unc = os.path.join(out_dir, unc)
-        out_dir_unc_images = os.path.join(out_dir_unc, 'images')
-        out_dir_unc_masks = os.path.join(out_dir_unc, 'masks')
-        os.makedirs(out_dir_unc_images, exist_ok=True)
-        os.makedirs(out_dir_unc_masks, exist_ok=True)
+        for unc in highest_uncertainty_dfs.keys():
+            out_dir_unc = os.path.join(out_dir, unc)
+            out_dir_unc_images = os.path.join(out_dir_unc, 'images')
+            out_dir_unc_masks = os.path.join(out_dir_unc, 'masks')
+            os.makedirs(out_dir_unc_images, exist_ok=True)
+            os.makedirs(out_dir_unc_masks, exist_ok=True)
 
-        highest_uncertainty_dfs[unc].to_csv(os.path.join(out_dir_unc, 'dataframe.csv'))
-        image_names = np.array(highest_uncertainty_dfs[unc]['image_path'])
+            highest_uncertainty_dfs[unc].to_csv(os.path.join(out_dir_unc, 'dataframe.csv'))
+            image_names = np.array(highest_uncertainty_dfs[unc]['image_path'])
 
-        for i in range(len(image_names)):
-            file = image_names[i]
-            path = os.path.join(data_dir, file)
-            shutil.copy(path, out_dir_unc_images)
+            for i in range(len(image_names)):
+                file = image_names[i]
+                path = os.path.join(data_dir, file)
+                shutil.copy(path, out_dir_unc_images)
 
-            mask_path = path.replace('/images/', '/masks/')
-            shutil.copy(mask_path, out_dir_unc_masks)
+                mask_path = path.replace('/images/', '/masks/')
+                shutil.copy(mask_path, out_dir_unc_masks)
 
 
 

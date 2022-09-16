@@ -98,6 +98,8 @@ class ModelHandler:
 
                 if globals.config['logging']['save_images']:
                     save_acquired_images(data_gen, train_indices, self.highest_uncertainty_dfs, acquisition_step)
+                if len(globals.config['logging']['test_pred_wsis'])>0:
+                    self.save_test_predictions(data_gen, test_feat, acquisition_step)
 
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
@@ -179,42 +181,33 @@ class ModelHandler:
 
         labels_per_wsi = globals.config['data']['active_learning']['step']['labels_per_wsi']
 
-        if not globals.config['model']['acquisition']['random']:
-            # features_unlabeled = self.get_features(data_gen.train_generator_unlabeled)
-            features_unlabeled = train_features[data_gen.train_df['available_for_query']]
-            preds = self.get_predictions(features_unlabeled)
+        # features_unlabeled = self.get_features(data_gen.train_generator_unlabeled)
+        features_unlabeled = train_features[data_gen.train_df['available_for_query']]
+        features_labeled = train_features[data_gen.train_df['labeled']]
+        if globals.config['model']['acquisition']['focal']['focussed_epistemic']:
+            self.update_ood_estimator(features_labeled)
 
-            # features_labeled = self.get_features(data_gen.train_generator_labeled)
-            features_labeled = train_features[data_gen.train_df['labeled']]
-            if globals.config['model']['acquisition']['focussed_epistemic']:
-                self.update_ood_estimator(features_labeled)
+        acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(features_unlabeled)
 
-            acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features_unlabeled)
-
-            sorted_rows = np.argsort(acquisition_scores)[::-1]
-            if not wsi_independent_labeling:
-                unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
-                                                                              wsi_dataframe['Partition'] == 'train')])
-                mean_uncertainties= np.zeros_like(unlabeled_wsis)
-                for i in range(len(unlabeled_wsis)):
-                    rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
-                    mean_uncertainties[i] = np.mean(acquisition_scores[rows])
-                sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
-                selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
-            else:
-                selected_wsis = []
+        sorted_rows = np.argsort(acquisition_scores)[::-1]
+        if not wsi_independent_labeling:
+            unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                          wsi_dataframe['Partition'] == 'train')])
+            mean_uncertainties= np.zeros_like(unlabeled_wsis)
+            for i in range(len(unlabeled_wsis)):
+                rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
+                mean_uncertainties[i] = np.mean(acquisition_scores[rows])
+            sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
+            selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
         else:
-            unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
-                                                                          wsi_dataframe['Partition'] == 'train')]
-            selected_wsis = np.random.choice(unlabeled_wsis, size=wsis_per_acquisition, replace=False)
+            selected_wsis = []
 
         # get the highest uncertainties of the selected WSIs
-
         if not globals.config['data']['active_learning']['step']['flexible_labeling']:
             unlabeled_ids = np.array([]) # reference to unlabeled dataframe
             for wsi in selected_wsis:
                 wsi_rows = np.array([])
-                if not globals.config['model']['acquisition']['random']:
+                if not globals.config['model']['acquisition']['strategy'] == 'random':
                     for row in sorted_rows:
                         if unlabeled_dataframe['wsi'].iloc[row] == wsi:
                             wsi_rows = np.concatenate([row, wsi_rows], axis=None)
@@ -236,7 +229,7 @@ class ModelHandler:
                 if len(unlabeled_ids) >= wsis_per_acquisition*labels_per_wsi:
                     break
         ids = unlabeled_dataframe['index'].iloc[unlabeled_ids].values[:] # convert to train_df reference
-        if not globals.config['model']['acquisition']['random']:
+        if not globals.config['model']['acquisition']['strategy'] == 'random':
             self.store_dataframes_for_logging(data_gen, unlabeled_ids, acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc)
         return selected_wsis, ids
 
@@ -260,7 +253,7 @@ class ModelHandler:
 
     def update_ood_estimator(self, features_labeled):
         features = features_labeled
-        ood_k_neighbors = globals.config['model']['acquisition']['ood_k_neighbors']
+        ood_k_neighbors = globals.config['model']['acquisition']['focal']['ood_k_neighbors']
         ood_estimator = LocalOutlierFactor(n_neighbors=ood_k_neighbors, novelty=True)
         ood_estimator.fit(features)
 
@@ -328,70 +321,180 @@ class ModelHandler:
             os.makedirs(output_dir, exist_ok=True)
             plt.savefig(os.path.join(output_dir, str(i) + ".png"))
             
-            
-    def _calc_aleatoric_unc(self, p_hat):
-        uncertainty_calculation = globals.config['model']['acquisition']['uncertainty_calculation']
-
-        if uncertainty_calculation == 'variance_based':
-            unc_matrices = []
-            for t in range(p_hat.shape[0]):
-                mat = np.diag(p_hat[t]) - np.outer(p_hat[t], p_hat[t])
-                unc_matrices.append(mat)
-            aleatoric_unc_matrix = np.mean(np.array(unc_matrices), axis=0)
-            aleatoric_total = np.trace(aleatoric_unc_matrix)
-        elif uncertainty_calculation == 'entropy_based':
-            aleatoric_total = - np.sum(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
-        else:
-            raise Exception('Invalid uncertainty_calulation: ' + uncertainty_calculation)
-
-        return aleatoric_total
-
-    def _calc_epistemic_unc(self, p_hat):
-        uncertainty_calculation = globals.config['model']['acquisition']['uncertainty_calculation']
-
-        if uncertainty_calculation == 'variance_based':
-            p_bar = np.mean(p_hat, axis=0)
-            unc_matrices = []
-            for t in range(p_hat.shape[0]):
-                mat = np.outer(p_hat[t] - p_bar, p_hat[t] - p_bar)
-                unc_matrices.append(mat)
-            epistemic_unc_matrix = np.mean(np.array(unc_matrices), axis=0)
-
-            if globals.config['model']['acquisition']['focussed_epistemic']:
-                c_weights = list(self.class_weights.values())
-                epistemic_total = np.inner(c_weights, np.diag(epistemic_unc_matrix))
-            else:
-                epistemic_total = np.trace(epistemic_unc_matrix)
-        elif uncertainty_calculation == 'entropy_based':
-            mean = np.mean(p_hat, axis=0)
-            entropy = - np.sum(np.multiply(mean, np.log(mean)), axis=0)
-            epistemic_total = entropy + np.sum(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
-        else:
-            raise Exception('Invalid uncertainty_calulation: ' + uncertainty_calculation)
-        return epistemic_total
-
+    #
+    # def _calc_aleatoric_unc(self, p_hat):
+    #     uncertainty_calculation = globals.config['model']['acquisition']['uncertainty_calculation']
+    #
+    #     if uncertainty_calculation == 'variance_based':
+    #         unc_matrices = []
+    #         for t in range(p_hat.shape[0]):
+    #             mat = np.diag(p_hat[t]) - np.outer(p_hat[t], p_hat[t])
+    #             unc_matrices.append(mat)
+    #         aleatoric_unc_matrix = np.mean(np.array(unc_matrices), axis=0)
+    #         aleatoric_total = np.trace(aleatoric_unc_matrix)
+    #     elif uncertainty_calculation == 'entropy_based':
+    #         aleatoric_total = - np.sum(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
+    #     else:
+    #         raise Exception('Invalid uncertainty_calulation: ' + uncertainty_calculation)
+    #
+    #     return aleatoric_total
+    #
+    # def _calc_epistemic_unc(self, p_hat):
+    #     uncertainty_calculation = globals.config['model']['acquisition']['uncertainty_calculation']
+    #
+    #     if uncertainty_calculation == 'variance_based':
+    #         p_bar = np.mean(p_hat, axis=0)
+    #         unc_matrices = []
+    #         for t in range(p_hat.shape[0]):
+    #             mat = np.outer(p_hat[t] - p_bar, p_hat[t] - p_bar)
+    #             unc_matrices.append(mat)
+    #         epistemic_unc_matrix = np.mean(np.array(unc_matrices), axis=0)
+    #
+    #         if globals.config['model']['acquisition']['focussed_epistemic']:
+    #             c_weights = list(self.class_weights.values())
+    #             epistemic_total = np.inner(c_weights, np.diag(epistemic_unc_matrix))
+    #         else:
+    #             epistemic_total = np.trace(epistemic_unc_matrix)
+    #     elif uncertainty_calculation == 'entropy_based':
+    #         mean = np.mean(p_hat, axis=0)
+    #         entropy = - np.sum(np.multiply(mean, np.log(mean)), axis=0)
+    #         epistemic_total = entropy + np.sum(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
+    #     else:
+    #         raise Exception('Invalid uncertainty_calulation: ' + uncertainty_calculation)
+    #     return epistemic_total
+    #
+    # def _calc_deterministic_entropy(self, p):
+    #     entropy = - np.sum(np.multiply(p, np.log(p)), axis=0)
+    #     return entropy
+    #
+    # def get_aleatoric_and_epistemic_uncertainty(self, preds):
+    #     n_predictions = preds.shape[-2]
+    #
+    #     aleatoric_unc = []
+    #     epistemic_unc = []
+    #
+    #     # Iterate over datapoints to make calculation easier
+    #     for i in range(n_predictions):
+    #         if globals.config['model']['head']['type'] == 'bnn':
+    #             vector_samples = preds[:, i, :]  # dimensions of vector_samples: [n_samples, n_classes]
+    #             aleatoric_unc.append(self._calc_aleatoric_unc(vector_samples))
+    #             epistemic_unc.append(self._calc_epistemic_unc(vector_samples))
+    #         else:
+    #             aleatoric_unc.append(0)
+    #             epistemic_unc.append(self._calc_deterministic_entropy(preds[i]))
+    #
+    #     aleatoric_unc = np.array(aleatoric_unc)
+    #     epistemic_unc = np.array(epistemic_unc)
+    #
+    #     self.uncertainty_logs['aleatoric_unc_mean'] = np.mean(aleatoric_unc)
+    #     self.uncertainty_logs['aleatoric_unc_min'] = np.min(aleatoric_unc)
+    #     self.uncertainty_logs['aleatoric_unc_max'] = np.max(aleatoric_unc)
+    #
+    #     self.uncertainty_logs['epistemic_unc_mean'] = np.mean(epistemic_unc)
+    #     self.uncertainty_logs['epistemic_unc_min'] = np.min(epistemic_unc)
+    #     self.uncertainty_logs['epistemic_unc_max'] = np.max(epistemic_unc)
+    #
+    #     return aleatoric_unc, epistemic_unc
+    #
+    # def get_ood_probabilities(self, features):
+    #     if globals.config['model']['acquisition']['focussed_epistemic']:
+    #         # features = np.expand_dims(np.mean(features, axis=1), axis=1)
+    #         lof = - self.ood_estimator.score_samples(features)
+    #         m = 0.1
+    #         ood_score = m * lof
+    #         self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
+    #         self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
+    #         self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
+    #     else:
+    #         ood_score = np.zeros(shape=features.shape[0])
+    #
+    #     return ood_score
+    #
+    # def get_acquisition_scores(self, preds, features):
+    #
+    #     aleatoric_unc, epistemic_unc = self.get_aleatoric_and_epistemic_uncertainty(preds)
+    #     ood_prob = self.get_ood_probabilities(features)
+    #
+    #     aleatoric_factor = globals.config['model']['acquisition']['aleatoric_factor']
+    #     ood_factor = globals.config['model']['acquisition']['ood_factor']
+    #
+    #     acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
+    #
+    #     self.uncertainty_logs['acq_scores_mean'] = np.mean(acq_scores)
+    #     self.uncertainty_logs['acq_scores_min'] = np.min(acq_scores)
+    #     self.uncertainty_logs['acq_scores_max'] = np.max(acq_scores)
+    #
+    #     return acq_scores, epistemic_unc, aleatoric_unc, ood_prob
     def _calc_deterministic_entropy(self, p):
-        entropy = - np.sum(np.multiply(p, np.log(p)), axis=0)
+        entropy = - np.sum(np.multiply(p, np.log(p+0.00001)), axis=0)
         return entropy
 
-    def get_aleatoric_and_epistemic_uncertainty(self, preds):
-        n_predictions = preds.shape[-2]
-
+    def _calc_probabilistic_entropy(self, p_hat):
+        mean = np.mean(p_hat, axis=0)
+        entropy = - np.sum(np.multiply(mean, np.log(mean+0.00001)), axis=0)
+        return entropy
+    def _calc_aleatoric_unc(self, preds):
+        uncertainty_calculation = globals.config['model']['acquisition']['focal']['uncertainty_calculation']
         aleatoric_unc = []
-        epistemic_unc = []
-
-        # Iterate over datapoints to make calculation easier
-        for i in range(n_predictions):
-            if globals.config['model']['head']['type'] == 'bnn':
-                vector_samples = preds[:, i, :]  # dimensions of vector_samples: [n_samples, n_classes]
-                aleatoric_unc.append(self._calc_aleatoric_unc(vector_samples))
-                epistemic_unc.append(self._calc_epistemic_unc(vector_samples))
+        for i in range(preds.shape[1]):
+            p_hat = preds[:, i, :]
+            if uncertainty_calculation == 'variance_based':
+                unc_matrices = []
+                for t in range(p_hat.shape[0]):
+                    mat = np.diag(p_hat[t]) - np.outer(p_hat[t], p_hat[t])
+                    unc_matrices.append(mat)
+                aleatoric_unc_matrix = np.mean(np.array(unc_matrices), axis=0)
+                aleatoric_total = np.trace(aleatoric_unc_matrix)
+            elif uncertainty_calculation == 'entropy_based':
+                aleatoric_total = - np.sum(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
             else:
-                aleatoric_unc.append(0)
-                epistemic_unc.append(self._calc_deterministic_entropy(preds[i]))
-
+                raise Exception('Invalid uncertainty_calulation: ' + uncertainty_calculation)
+            aleatoric_unc.append(aleatoric_total)
         aleatoric_unc = np.array(aleatoric_unc)
+        return aleatoric_unc
+
+    def _calc_epistemic_unc(self, preds, type='variance_based', focused=False):
+        epistemic_unc = []
+        for i in range(preds.shape[1]):
+            p_hat = preds[:, i, :]
+            if type == 'variance_based':
+                p_bar = np.mean(p_hat, axis=0)
+                unc_matrices = []
+                for t in range(p_hat.shape[0]):
+                    mat = np.outer(p_hat[t] - p_bar, p_hat[t] - p_bar)
+                    unc_matrices.append(mat)
+                epistemic_unc_matrix = np.mean(np.array(unc_matrices), axis=0)
+
+                if focused:
+                    c_weights = list(self.class_weights.values())
+                    epistemic_total = np.inner(c_weights, np.diag(epistemic_unc_matrix))
+                else:
+                    epistemic_total = np.trace(epistemic_unc_matrix)
+            elif type == 'entropy_based':
+                entropy = self._calc_probabilistic_entropy(p_hat)
+                epistemic_total = entropy + np.sum(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
+            else:
+                raise Exception('Invalid uncertainty_calulation: ' + type)
+            epistemic_unc.append(epistemic_total)
         epistemic_unc = np.array(epistemic_unc)
+        return epistemic_unc
+
+    def get_aleatoric_and_epistemic_uncertainty(self, features):
+        acquisition_strategy = globals.config['model']['acquisition']['strategy']
+        n_predictions = features.shape[0]
+        p_hat = self.get_predictions(features)
+
+        if acquisition_strategy == 'focal':
+            # Iterate over datapoints to make calculation easier
+            aleatoric_unc = self._calc_aleatoric_unc(p_hat)
+            epistemic_unc = self._calc_epistemic_unc(p_hat,
+                                                     globals.config['model']['acquisition']['focal'][
+                                                         'uncertainty_calculation'],
+                                                     globals.config['model']['acquisition']['focal'][
+                                                         'focussed_epistemic'])
+        else:
+            aleatoric_unc = np.zeros(n_predictions)
+            epistemic_unc = np.zeros(n_predictions)
 
         self.uncertainty_logs['aleatoric_unc_mean'] = np.mean(aleatoric_unc)
         self.uncertainty_logs['aleatoric_unc_min'] = np.min(aleatoric_unc)
@@ -404,35 +507,73 @@ class ModelHandler:
         return aleatoric_unc, epistemic_unc
 
     def get_ood_probabilities(self, features):
-        if globals.config['model']['acquisition']['focussed_epistemic']:
+        if globals.config['model']['head']['type'] == 'bnn':
             # features = np.expand_dims(np.mean(features, axis=1), axis=1)
-            lof = - self.ood_estimator.score_samples(features)
-            m = 0.1
-            ood_score = m * lof
-            self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
-            self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
-            self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
+            in_distribution_prob = self.ood_estimator.score_samples(features)
+            in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
+                                 (np.max(in_distribution_prob) - np.min(in_distribution_prob))
+            ood_score = 1 - in_dist_normalized
         else:
             ood_score = np.zeros(shape=features.shape[0])
+        self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
+        self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
+        self.uncertainty_logs['ood_score_max'] = np.max(ood_score)
 
         return ood_score
 
-    def get_acquisition_scores(self, preds, features):
+    def get_complete_entropy(self, preds, mode='probabilistic'):
+        entropy = []
+        for i in range(preds.shape[-2]):
+            if mode=='probabilistic':
+                p_hat = preds[:,i,:]
+                entropy.append(self._calc_probabilistic_entropy(p_hat))
+            else:
+                p_hat = preds[:, i]
+                entropy.append(self._calc_deterministic_entropy(p_hat))
 
-        aleatoric_unc, epistemic_unc = self.get_aleatoric_and_epistemic_uncertainty(preds)
-        ood_prob = self.get_ood_probabilities(features)
+        entropy = np.array(entropy)
+        return entropy
 
-        aleatoric_factor = globals.config['model']['acquisition']['aleatoric_factor']
-        ood_factor = globals.config['model']['acquisition']['ood_factor']
+    def get_acquisition_scores(self, features):
+        # focal, bald, epistemic, entropy, max_std, random
+        acquisition_strategy = globals.config['model']['acquisition']['strategy']
 
-        acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
+        acq_scores = np.zeros(features.shape[0])
+        epistemic_unc = np.zeros(features.shape[0])
+        aleatoric_unc = np.zeros(features.shape[0])
+        ood_prob = np.zeros(features.shape[0])
+
+        if acquisition_strategy == 'focal':
+            aleatoric_unc, epistemic_unc = self.get_aleatoric_and_epistemic_uncertainty(features)
+            ood_prob = self.get_ood_probabilities(features)
+
+            aleatoric_factor = globals.config['model']['acquisition']['focal']['aleatoric_factor']
+            ood_factor = globals.config['model']['acquisition']['focal']['ood_factor']
+
+            acq_scores = epistemic_unc - aleatoric_factor*aleatoric_unc - ood_factor*ood_prob
+        elif acquisition_strategy == 'bald':
+            preds = self.get_predictions(features)
+            acq_scores = self._calc_epistemic_unc(preds, type='entropy_based', focused=False)
+        elif acquisition_strategy == 'epistemic':
+            preds = self.get_predictions(features)
+            acq_scores = self._calc_epistemic_unc(preds, type='variance_based', focused=False)
+        elif acquisition_strategy == 'max_std':
+            preds = self.get_predictions(features)
+            acq_scores = np.mean(np.std(preds, axis=0), axis=-1)
+        elif acquisition_strategy == 'entropy':
+            preds = self.get_predictions(features)
+            acq_scores = self.get_complete_entropy(preds, mode='probabilistic')
+        elif acquisition_strategy == 'det_entropy':
+            preds = self.get_predictions(features)
+            acq_scores = self.get_complete_entropy(preds, mode='deterministic')
+        elif acquisition_strategy == 'random':
+            acq_scores = np.random.uniform(0.0, 1.0, features.shape[0])
 
         self.uncertainty_logs['acq_scores_mean'] = np.mean(acq_scores)
         self.uncertainty_logs['acq_scores_min'] = np.min(acq_scores)
         self.uncertainty_logs['acq_scores_max'] = np.max(acq_scores)
 
         return acq_scores, epistemic_unc, aleatoric_unc, ood_prob
-
     def store_dataframes_for_logging(self, data_gen, acquisition_ids, acq_scores, epistemic_unc, aleatoric_unc, ood_unc):
 
         unc_names = ['acq_scores', 'epistemic_unc', 'aleatoric_unc', 'ood_unc']
@@ -466,5 +607,31 @@ class ModelHandler:
         if self.wsi_model is not None:
             wsi_head_path = os.path.join(save_dir, "wsi_head.h5")
             self.wsi_model.save_weights(wsi_head_path)
+
+    def save_test_predictions(self, data_gen, test_feat, acquisition_step):
+        selected_wsis = globals.config['logging']['test_pred_wsis']
+        selected_df = data_gen.test_df[data_gen.test_df['wsi'].isin(selected_wsis)].copy()
+        selected_features = test_feat[selected_df.index]
+        preds = self.get_predictions(selected_features)
+        if globals.config['model']['head']['type'] == 'bnn':
+           preds = np.mean(preds, axis=0)
+        class_preds = np.argmax(preds, axis=-1)
+        acq_score, epistemic_unc, aleatoric_unc, ood_prob = self.get_acquisition_scores(selected_features)
+
+        selected_df['prediction'] = class_preds
+        selected_df['acq_score'] = acq_score
+        selected_df['epistemic_unc'] = epistemic_unc
+        selected_df['aleatoric_unc'] = aleatoric_unc
+        selected_df['ood_prob'] = ood_prob
+
+        out_dir = globals.config['logging']['experiment_folder']
+        out_dir = os.path.join(out_dir, str(acquisition_step))
+        os.makedirs(out_dir, exist_ok=True)
+
+        selected_df.to_csv(os.path.join(out_dir, 'test_predictions.csv'))
+
+
+
+
 
 
