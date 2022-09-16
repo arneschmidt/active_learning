@@ -172,6 +172,11 @@ class ModelHandler:
         wsi_dataframe = data_gen.wsi_df
 
         wsis_per_acquisition = globals.config['data']['active_learning']['step']['wsis']
+        wsi_independent_labeling = globals.config['data']['active_learning']['step']['wsi_independent_labeling']
+        if globals.config['data']['active_learning']['step']['acceleration']:
+            if self.acquisition_step > globals.config['data']['active_learning']['step']['acceleration']['after_step']:
+                wsis_per_acquisition = globals.config['data']['active_learning']['step']['acceleration']['wsis']
+
         labels_per_wsi = globals.config['data']['active_learning']['step']['labels_per_wsi']
 
         if not globals.config['model']['acquisition']['random']:
@@ -187,15 +192,17 @@ class ModelHandler:
             acquisition_scores, epistemic_unc, aleatoric_unc, ood_unc = self.get_acquisition_scores(preds, features_unlabeled)
 
             sorted_rows = np.argsort(acquisition_scores)[::-1]
-
-            unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
-                                                                          wsi_dataframe['Partition'] == 'train')])
-            mean_uncertainties= np.zeros_like(unlabeled_wsis)
-            for i in range(len(unlabeled_wsis)):
-                rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
-                mean_uncertainties[i] = np.mean(acquisition_scores[rows])
-            sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
-            selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+            if not wsi_independent_labeling:
+                unlabeled_wsis = np.array(wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
+                                                                              wsi_dataframe['Partition'] == 'train')])
+                mean_uncertainties= np.zeros_like(unlabeled_wsis)
+                for i in range(len(unlabeled_wsis)):
+                    rows = unlabeled_dataframe['wsi'] == unlabeled_wsis[i]
+                    mean_uncertainties[i] = np.mean(acquisition_scores[rows])
+                sorted_wsi_rows = np.argsort(mean_uncertainties)[::-1]
+                selected_wsis = unlabeled_wsis[sorted_wsi_rows[0:wsis_per_acquisition]]
+            else:
+                selected_wsis = []
         else:
             unlabeled_wsis = wsi_dataframe['slide_id'].loc[np.logical_and(np.logical_not(wsi_dataframe['labeled']),
                                                                           wsi_dataframe['Partition'] == 'train')]
@@ -204,7 +211,7 @@ class ModelHandler:
         # get the highest uncertainties of the selected WSIs
 
         if not globals.config['data']['active_learning']['step']['flexible_labeling']:
-            ids = np.array([]) # reference to unlabeled dataframe
+            unlabeled_ids = np.array([]) # reference to unlabeled dataframe
             for wsi in selected_wsis:
                 wsi_rows = np.array([])
                 if not globals.config['model']['acquisition']['random']:
@@ -216,15 +223,15 @@ class ModelHandler:
                 else:
                     candidates = np.squeeze(np.argwhere(np.array(unlabeled_dataframe['wsi']==wsi)))
                     wsi_rows = np.random.choice(candidates, size=labels_per_wsi, replace=False)
-                ids = np.concatenate([ids, wsi_rows], axis=None)
-            if ids.size != wsis_per_acquisition*labels_per_wsi:
+                unlabeled_ids = np.concatenate([unlabeled_ids, wsi_rows], axis=None)
+            if unlabeled_ids.size != wsis_per_acquisition*labels_per_wsi:
                 print('Expected labels: ', wsis_per_acquisition*labels_per_wsi)
-                print('Requested labels: ', ids.size)
+                print('Requested labels: ', unlabeled_ids.size)
                 print('Not enough labels obtained!')
         else:
             unlabeled_ids = [] # reference to unlabeled dataframe
             for row in sorted_rows:
-                if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis:
+                if unlabeled_dataframe['wsi'].iloc[row] in selected_wsis or wsi_independent_labeling:
                     unlabeled_ids.append(row)
                 if len(unlabeled_ids) >= wsis_per_acquisition*labels_per_wsi:
                     break
@@ -399,13 +406,9 @@ class ModelHandler:
     def get_ood_probabilities(self, features):
         if globals.config['model']['acquisition']['focussed_epistemic']:
             # features = np.expand_dims(np.mean(features, axis=1), axis=1)
-            in_distribution_prob = self.ood_estimator.score_samples(features)
-            in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
-                                 (np.max(in_distribution_prob) - np.min(in_distribution_prob))
-            ood_score = 1 - in_dist_normalized
-            normalization_mean = 0.1
-            ood_score = normalization_mean * ood_score / np.mean(ood_score)
-            self.uncertainty_logs['ood_in_dist_prob_mean'] = np.mean(in_distribution_prob)
+            lof = - self.ood_estimator.score_samples(features)
+            m = 0.1
+            ood_score = m * lof
             self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)
             self.uncertainty_logs['ood_score_min'] = np.min(ood_score)
             self.uncertainty_logs['ood_score_max'] = np.max(ood_score)

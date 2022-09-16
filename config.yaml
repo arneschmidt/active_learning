@@ -2,27 +2,27 @@
 random_seed: 0
 model:
   test_on_the_fly: True
-  batch_size: 16
-  epochs: 2
+  batch_size: 8
+  epochs: 200
   learning_rate: 0.0001
-  lr_decrease_epochs: 1 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
+  lr_decrease_epochs: 100 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
   optimizer: adam # adam, sgd
   class_weighted_loss: True
   loss_function: categorical_crossentropy # "categorical_crossentropy", "focal_loss"
   metrics_patch_level: True
   metrics_wsi_level: True
-  metrics_for_monitoring: val_f1_mean
+  metrics_for_monitoring: val_cohens_quadratic_kappa # 'val_cohens_quadratic_kappa', 'val_f1_mean', 'None'
   load_model: None # 'None' or path to experiment folder which containes 'models' directory with .h5 files
   save_model: False # True or False
   feature_extractor:
-    type: efficientnetb0 # "fsconv", "simple_cnn", "mobilenetv2", "resnet50", "efficientnetb0", "efficientnetb1", "eff.."
+    type: efficientnetb3 # "fsconv", "simple_cnn", "mobilenetv2", "resnet50", "efficientnetb0", "efficientnetb1", "eff.."
     global_max_pooling: False
     num_output_features: 128 # feature dimension of feature extractor output, set to 0 to skip this layer
     output_activation: relu # sigmoid, relu
     dropout: 0.5
-    multiscale: False
+    multiscale: True
   head:
-    type: deterministic # deterministic, bnn
+    type: bnn # deterministic, bnn
     deterministic:
       dropout: 0.0
       number_hidden_units: 128 # feature dimension of hidden layer, set to 0 to skip this layer
@@ -33,28 +33,27 @@ model:
       extra_layer: True
       weight_std: 0.1
   wsi_level_model:
-    use: True # if false, the wsi metrics will be calculated based on the patch classiciation
+    use: True # if False, the wsi metrics will be calculated based on the patch classiciation
     access_to_all_wsis: True # if False, only the acquired WSIs (with patch labels) are used for training
-    learning_rate: 0.001
+    learning_rate: 0.01
   acquisition:
     random: False # if True, all other acquisition parameters are ignored
     keep_trained_weights: False
     uncertainty_calculation: variance_based # variance_based, entropy_based
     focussed_epistemic: True
-    ood_k_neighbors: 20
     aleatoric_factor: 0.5
     ood_factor: 2.0
-    after_acc_above: 0.8
+    ood_k_neighbors: 50
     wsi_selection: uncertainty_mean # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
 
 data:
-  dataset_config: ./dataset_dependent/panda/dummy_config.yaml
+  dataset_config: ./dataset_dependent/panda/config.yaml
   supervision: active_learning # 'supervised', 'active_learning'
   augmentation:
     channel_shift_range: 0.2
-    width_shift_range: 0.2 # fraction of total width <1
-    height_shift_range: 0.2 # fraction of total height <1
-    zoom_range: 0.2 # [1-zoom_range, 1+zoom_range]
+    width_shift_range: 0.0 # fraction of total width <1
+    height_shift_range: 0.0 # fraction of total height <1
+    zoom_range: 0.0 # [1-zoom_range, 1+zoom_range]
     hue: 0.2 # between 0 and 1
     saturation: 0.2 # between 0 and 1
     contrast: 0.2 # between 0 and 1
@@ -62,18 +61,23 @@ data:
     brightness: 0.2 # between 0 and 1
   active_learning:
     start:
-      wsis_per_class: 2
-      labels_per_class_and_wsi: -1 # -1 (all) or number of labels per wsi
+      wsis_per_class: 5
+      labels_per_class_and_wsi: 5 # -1 (all) or number of labels per wsi
     step:
-      wsis: 2
+      wsis: 10
       labels_per_wsi: 5
       flexible_labeling: True # if True, the labels of one step can be distributed freely within the selected WSIs
-      total_steps: 30
+      wsi_independent_labeling: False
+      total_steps: 18
+      acceleration:
+        use: False
+        wsis: 100
+        after_step: 5
 
 logging:
   log_artifacts: True
   save_images: True
-  interval: 1
+  interval: 5
   test_on_the_fly: True
   run_name: efficientnetb1
   tracking_url: /work/work_arne/mlflow_server

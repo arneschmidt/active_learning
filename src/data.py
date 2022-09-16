@@ -42,8 +42,12 @@ class DataGenerator():
 
     def query_from_oracle(self, selected_wsis, train_indices):
         self.wsi_df['labeled'].loc[self.wsi_df['slide_id'].isin(selected_wsis)] = True
-        for wsi in selected_wsis:
-            self.train_df['available_for_query'].loc[self.train_df['wsi'] == wsi] = False
+
+        if not globals.config['data']['active_learning']['step']['wsi_independent_labeling']:
+            for wsi in selected_wsis:
+                self.train_df['available_for_query'].loc[self.train_df['wsi'] == wsi] = False
+        else:
+            self.train_df['available_for_query'].loc[train_indices] = False
 
         self.train_df['labeled'].loc[train_indices] = True
         self.train_generator_labeled = self.data_generator_from_dataframe(self.train_df.loc[self.train_df['labeled']], shuffle=True)
