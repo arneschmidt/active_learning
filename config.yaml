@@ -31,20 +31,21 @@ model:
       number_hidden_units: 128
       kl_loss_factor: 1
       extra_layer: True
-      weight_std: 0.1
+      weight_std: 0.05
   wsi_level_model:
     use: True # if False, the wsi metrics will be calculated based on the patch classiciation
     access_to_all_wsis: True # if False, only the acquired WSIs (with patch labels) are used for training
     learning_rate: 0.01
   acquisition:
-    random: False # if True, all other acquisition parameters are ignored
+    strategy: focal # focal, bald, epistemic, max_std, entropy,  det_entropy, random
+    wsi_selection: uncertainty_max # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
     keep_trained_weights: False
-    uncertainty_calculation: variance_based # variance_based, entropy_based
-    focussed_epistemic: True
-    aleatoric_factor: 0.5
-    ood_factor: 2.0
-    ood_k_neighbors: 50
-    wsi_selection: uncertainty_mean # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
+    focal:
+      uncertainty_calculation: variance_based # variance_based, entropy_based
+      focussed_epistemic: True
+      ood_k_neighbors: 10
+      aleatoric_factor: 0.5
+      ood_factor: 1.0
 
 data:
   dataset_config: ./dataset_dependent/panda/config.yaml
@@ -61,18 +62,18 @@ data:
     brightness: 0.2 # between 0 and 1
   active_learning:
     start:
-      wsis_per_class: 5
+      wsis_per_class: 25
       labels_per_class_and_wsi: 5 # -1 (all) or number of labels per wsi
     step:
-      wsis: 10
+      wsis: 100
       labels_per_wsi: 5
       flexible_labeling: True # if True, the labels of one step can be distributed freely within the selected WSIs
-      wsi_independent_labeling: False
-      total_steps: 18
+      wsi_independent_labeling: True
+      total_steps: 20
       acceleration:
         use: False
         wsis: 100
-        after_step: 5
+        after_step: 4
 
 logging:
   log_artifacts: True
