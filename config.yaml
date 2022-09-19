@@ -82,3 +82,25 @@ logging:
   test_on_the_fly: True
   run_name: efficientnetb1
   tracking_url: /work/work_arne/mlflow_server
+  test_pred_wsis:
+    - '880a1fc64038757f0a332bdf8b81ef05'
+    - '9f887e6311f6062c5741bfae853edb80'
+    - 'd1766314b6c9a6f528f4cb6643798d41'
+    - '8b1293493098a9bd999ef0c0dfdee134'
+    - '4f066c3230d1e0d5f38a1837ea1a86e6'
+    - 'b70651a991d293e0fa741ebb1754e15e'
+    - '085d3e58058fa98dcbbdf64dacfe51be'
+    - '3d0fd9f2d0044ce12d01fd6eeeb32161'
+    - '1bf0cb1e3f0b2ce35b9b0a406cd225c5'
+    - '136cae2844e9f6fd15f09ccc9453e0b6'
+    - '267f0ec89d4c07f0a113e4ebceca7d54'
+    - 'e610af2c9bdb892102c1c239c836121f'
+    - '3ffc717414973b70eeebb9fb3d273c5d'
+    - '24ecf26ce811ea7f0116d7ea5388bc4a'
+    - '8fc10ce3188de7e919b9f08fe5e6993c'
+    - '847c0798ac88eb76035bab0da44cb71c'
+    - '5c6a9d25b7c602062f4095c2518aa46a'
+    - '0b373388b189bee3ef6e320b841264dd'
+    - '6210281e975f738e94a5643d366e3b09'
+    - '2e24b2e477e5650b425ae9d58eff5654'
+    - 'dd025ef522443f0f1e0f2282d7145dde'
