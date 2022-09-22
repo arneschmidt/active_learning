@@ -94,6 +94,8 @@ class ModelHandler:
                 mlflow.log_metrics(self.uncertainty_logs, self.n_training_points)
                 selected_wsis, train_indices = self.select_data_for_labeling(data_gen, train_feat)
                 data_gen.query_from_oracle(selected_wsis, train_indices)
+                if len(globals.config['logging']['test_pred_wsis']) > 0:
+                    self.save_test_predictions(data_gen, test_feat, acquisition_step)
                 self.n_training_points = data_gen.get_number_of_training_points()
                 self.update_model(self.n_training_points, int(np.sum(data_gen.wsi_df['labeled'])))
 
