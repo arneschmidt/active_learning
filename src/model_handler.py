@@ -100,7 +100,6 @@ class ModelHandler:
                 if globals.config['logging']['save_images']:
                     save_acquired_images(data_gen, train_indices, self.highest_uncertainty_dfs, acquisition_step)
 
-
             if globals.config['logging']['log_artifacts']:
                 log_artifacts()
 

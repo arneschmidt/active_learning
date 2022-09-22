@@ -24,6 +24,7 @@ patch_stride_resized = patch_stride * resize_factor * (1/prepatching_factor)
 
 
 def create_grid(x, y, values, dim):
+    # OpenCV and skimage expect the coordinates in the order (h,w) and (y,x)
     x_n_patches = int(np.floor(dim[0] / patch_stride_resized))
     y_n_patches = int(np.floor(dim[1] / patch_stride_resized))
 
@@ -35,14 +36,14 @@ def create_grid(x, y, values, dim):
 
     patch_coordinate_grid = np.mgrid[0:y_n_patches, 0:x_n_patches] * patch_stride_resized + patch_stride_resized
     patch_coordinate_grid = np.moveaxis(patch_coordinate_grid, 0, 2)
-    pixel_grid = np.mgrid[0:dim[1], 0:dim[0]]  # order: h,w
+    pixel_grid = np.mgrid[0:dim[1], 0:dim[0]]  # order: h,w (y,x)
 
     patch_coordinate_grid = np.reshape(patch_coordinate_grid, (-1, 2))
     patch_grid = np.reshape(patch_grid, (-1))
 
-
+    # expected dims: patch_coordinate_grid [n_patches, 2]; patch_grid [n_patches,]; pixel_grid [2,wsi_height, wsi_width]
     pixel_grid_out = griddata(patch_coordinate_grid, patch_grid, (pixel_grid[0], pixel_grid[1]),
-                              method='cubic', fill_value=0.0) # dims: patch_coordinate_grid [n_patches, 2]; patch_grid [n_patches,]; pixel_grid [2,wsi_height, wsi_width]
+                              method='cubic', fill_value=0.0)
     pixel_grid_out = np.expand_dims(pixel_grid_out, axis=-1)
     return pixel_grid_out
 
@@ -63,9 +64,6 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
     color_GG4 = [-255, 255, 255]
     color_GG5 = [255, 255, -255]
     color_uncertainty = [-255, -255, 255]
-    # color_GG3 = [-255, -255, -255]
-    # color_GG4 = [-255, -255, -255]
-    # color_GG5 = [-255, -255, -255]
 
     if output_type == 'mask':
         mask_path = os.path.join(masks_dir, wsi_list[i] + '_mask.tiff')
@@ -87,6 +85,10 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
         mask = np.clip(grid_gg3*color_GG3 + grid_gg4*color_GG4 + grid_gg5*color_GG5, a_min=-255, a_max=255).astype(np.int32)
     else:
         values = np.array(wsi_patch_df[output_type])
+        if output_type == 'ood_prob':
+            values = values - 0.1
+        elif output_type == 'acq_scores':
+            values = values + 0.2
         if uncertainty_normalization:
             values = (values - np.min(values))/(np.max(values) - np.min(values))
         else:
@@ -99,6 +101,9 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
 
 
 if __name__ == "__main__":
+    # In this whole script we use the following coordinate order:
+    # x - width - horizontal
+    # y - height - vertical
     test_patch_df = pd.read_csv(csv_path)
     test_patch_df['y'] = test_patch_df['image_path'].str.split('_|.jpg', expand=True).iloc[:, 1].astype('int')
     test_patch_df['x'] = test_patch_df['image_path'].str.split('_|.jpg', expand=True).iloc[:, 2].astype('int')
@@ -121,7 +126,7 @@ if __name__ == "__main__":
         width = int(wsi.shape[1] * resize_factor)
         height = int(wsi.shape[0] * resize_factor)
 
-        dim = (width, height) # always: 1.width (x) 2. height (y)
+        dim = (width, height) # for resizing
         wsi = cv2.resize(wsi, dim, interpolation=cv2.INTER_CUBIC)
 
         cut_resized = []
