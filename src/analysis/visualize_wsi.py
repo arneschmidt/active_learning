@@ -77,12 +77,14 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
         mask = np.where(class_mask==3, color_GG3*mask_ones, mask).astype(np.uint8)
         mask = np.where(class_mask==4, color_GG4*mask_ones, mask).astype(np.uint8)
         mask = np.where(class_mask==5, color_GG5*mask_ones, mask).astype(np.uint8)
+        mask_factor = 0.4
     elif output_type == 'class' or output_type == 'prediction':
         classes = wsi_patch_df[output_type]
         grid_gg3 = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], np.array((classes == 1), dtype=np.float16), dim)
         grid_gg4 = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], np.array((classes == 2), dtype=np.float16), dim)
         grid_gg5 = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], np.array((classes == 3), dtype=np.float16), dim)
         mask = np.clip(grid_gg3*color_GG3 + grid_gg4*color_GG4 + grid_gg5*color_GG5, a_min=-255, a_max=255).astype(np.int32)
+        mask_factor = 0.2
     else:
         values = np.array(wsi_patch_df[output_type])
         if output_type == 'ood_prob':
@@ -95,8 +97,9 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
             values = np.clip(values, a_min=0.0, a_max=1.0)
         grid = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], values, dim)
         mask = np.clip(grid*color_uncertainty, a_min=-255, a_max=255).astype(np.int32)
+        mask_factor = 0.4
 
-    wsi_masked = np.clip(wsi + 0.5*mask, a_min=0, a_max=255).astype(np.uint8)
+    wsi_masked = np.clip(wsi + mask_factor*mask, a_min=0, a_max=255).astype(np.uint8)
     cut_and_save_image(wsi_masked, cut, wsi_name, output_type)
 
 

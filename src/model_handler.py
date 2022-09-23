@@ -88,8 +88,6 @@ class ModelHandler:
                 self._save_models(acquisition_step)
             if globals.config['model']['test_on_the_fly']:
                 self.test(data_gen, step=self.n_training_points)
-            if len(globals.config['logging']['test_pred_wsis']) > 0:
-                self.save_test_predictions(data_gen, test_feat, acquisition_step)
             if globals.config['data']['supervision'] == 'active_learning':
                 mlflow.log_metrics(self.uncertainty_logs, self.n_training_points)
                 selected_wsis, train_indices = self.select_data_for_labeling(data_gen, train_feat)
