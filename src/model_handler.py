@@ -174,7 +174,7 @@ class ModelHandler:
 
         wsis_per_acquisition = globals.config['data']['active_learning']['step']['wsis']
         wsi_independent_labeling = globals.config['data']['active_learning']['step']['wsi_independent_labeling']
-        if globals.config['data']['active_learning']['step']['acceleration']:
+        if globals.config['data']['active_learning']['step']['acceleration']['use']:
             if self.acquisition_step > globals.config['data']['active_learning']['step']['acceleration']['after_step']:
                 wsis_per_acquisition = globals.config['data']['active_learning']['step']['acceleration']['wsis']
 
@@ -405,11 +405,8 @@ class ModelHandler:
 
     def get_ood_probabilities(self, features):
         if globals.config['model']['head']['type'] == 'bnn':
-            # features = np.expand_dims(np.mean(features, axis=1), axis=1)
-            in_distribution_prob = self.ood_estimator.score_samples(features)
-            in_dist_normalized = (in_distribution_prob - np.min(in_distribution_prob))/\
-                                 (np.max(in_distribution_prob) - np.min(in_distribution_prob))
-            ood_score = 1 - in_dist_normalized
+            lof = -self.ood_estimator.score_samples(features) # score_samples returns negative lof, therefore the minus
+            ood_score = 0.1 * lof # scaling
         else:
             ood_score = np.zeros(shape=features.shape[0])
         self.uncertainty_logs['ood_score_mean'] = np.mean(ood_score)

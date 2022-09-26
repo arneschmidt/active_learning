@@ -60,10 +60,10 @@ def cut_and_save_image(wsi_masked, cut, wsi_name, output_type):
 
 
 def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
-    color_GG3 = [-255, 255, -255]
+    color_GG3 = [-255, -255, 255]
     color_GG4 = [-255, 255, 255]
     color_GG5 = [255, 255, -255]
-    color_uncertainty = [-255, -255, 255]
+    color_uncertainty = [-255, 255, -255]
 
     if output_type == 'mask':
         mask_path = os.path.join(masks_dir, wsi_list[i] + '_mask.tiff')
@@ -88,16 +88,16 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
     else:
         values = np.array(wsi_patch_df[output_type])
         if output_type == 'ood_prob':
-            values = values - 0.1
-        elif output_type == 'acq_scores':
-            values = values + 0.2
+            values = (values - 0.1) * 2
+        if output_type == 'acq_scores':
+            values = values + 0.5
         if uncertainty_normalization:
             values = (values - np.min(values))/(np.max(values) - np.min(values))
         else:
             values = np.clip(values, a_min=0.0, a_max=1.0)
         grid = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], values, dim)
         mask = np.clip(grid*color_uncertainty, a_min=-255, a_max=255).astype(np.int32)
-        mask_factor = 0.4
+        mask_factor = 0.5
 
     wsi_masked = np.clip(wsi + mask_factor*mask, a_min=0, a_max=255).astype(np.uint8)
     cut_and_save_image(wsi_masked, cut, wsi_name, output_type)
