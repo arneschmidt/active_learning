@@ -6,12 +6,14 @@ import skimage.io
 import skimage.transform
 from scipy.interpolate import griddata
 
-# best WSI: 24ecf26ce811ea7f0116d7ea5388bc4a
+# best WSI:
+# 24ecf26ce811ea7f0116d7ea5388bc4a
+# 8d9bf04e714c959d4c571030c51ee9f5
 
-csv_path = '/home/arne/projects/active_learning/experiment_output/test_predictions.csv'
+csv_path = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq09/test_predictions.csv'
 wsi_dir = '/home/arne/datasets/Panda/train_images/'
 masks_dir = '/home/arne/datasets/Panda/train_label_masks/'
-output_dir = '/home/arne/projects/active_learning/experiment_output/visualization/'
+output_dir = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq09/visualization/'
 wsi_list = []
 wsi_cut = []
 resize_factor = 0.2
@@ -62,8 +64,8 @@ def cut_and_save_image(wsi_masked, cut, wsi_name, output_type):
 def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
     color_GG3 = [-255, -255, 255]
     color_GG4 = [-255, 255, 255]
-    color_GG5 = [255, 255, -255]
-    color_uncertainty = [-255, 255, -255]
+    color_GG5 = [-255, 255, -255]
+    color_uncertainty = [255, 255, -255]
 
     if output_type == 'mask':
         mask_path = os.path.join(masks_dir, wsi_list[i] + '_mask.tiff')
@@ -88,9 +90,9 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
     else:
         values = np.array(wsi_patch_df[output_type])
         if output_type == 'ood_prob':
-            values = (values - 0.1) * 2
-        if output_type == 'acq_scores':
-            values = values + 0.5
+            values = (values - 0.1)
+        if output_type == 'acq_score':
+            values = (values + 0.1) * 2
         if uncertainty_normalization:
             values = (values - np.min(values))/(np.max(values) - np.min(values))
         else:

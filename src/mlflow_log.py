@@ -45,10 +45,11 @@ def log_and_store_metric(key, value, step):
     mlflow.log_metric(key, value, step)
     result_dataframe.loc[step, key] = value
 
-def log_and_store_metrics(dict: Dict, step):
+def log_and_store_metrics(dict: Dict, step, to_save_dataframe=False):
     mlflow.log_metrics(dict, step)
-    for key in dict.keys():
-        result_dataframe.loc[step, key] = dict[key]
+    if to_save_dataframe:
+        for key in dict.keys():
+            result_dataframe.loc[step, key] = dict[key]
 
 def log_dict_results(results, mode, step=None):
 

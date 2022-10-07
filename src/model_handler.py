@@ -125,7 +125,7 @@ class ModelHandler:
         metric_calculator = MetricCalculator(self, data_gen, globals.config)
         metrics, artifacts = metric_calculator.calc_metrics(mode='test')
         save_metrics_artifacts(artifacts, globals.config['logging']['experiment_folder'])
-        log_and_store_metrics(metrics, step)
+        log_and_store_metrics(metrics, step, to_save_dataframe=True)
 
     def predict(self, data):
         """
