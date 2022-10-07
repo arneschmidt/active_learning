@@ -41,9 +41,10 @@ def config_logging():
 def data_logging(data_dict):
     mlflow.log_params(data_dict)
 
-def log_and_store_metric(key, value, step):
+def log_and_store_metric(key, value, step, to_save_dataframe=False):
     mlflow.log_metric(key, value, step)
-    result_dataframe.loc[step, key] = value
+    if to_save_dataframe:
+        result_dataframe.loc[step, key] = value
 
 def log_and_store_metrics(dict: Dict, step, to_save_dataframe=False):
     mlflow.log_metrics(dict, step)
