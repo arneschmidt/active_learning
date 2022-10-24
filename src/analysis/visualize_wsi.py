@@ -10,19 +10,29 @@ from scipy.interpolate import griddata
 # 24ecf26ce811ea7f0116d7ea5388bc4a
 # 8d9bf04e714c959d4c571030c51ee9f5
 
-csv_path = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq09/test_predictions.csv'
+csv_path = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq00/test_predictions.csv'
 wsi_dir = '/home/arne/datasets/Panda/train_images/'
 masks_dir = '/home/arne/datasets/Panda/train_label_masks/'
-output_dir = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq09/visualization/'
-wsi_list = []
+output_dir = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq00/visualization_rafa/'
+wsi_list = ['24ecf26ce811ea7f0116d7ea5388bc4a']
 wsi_cut = []
 resize_factor = 0.2
-output_types = ['mask', 'class', 'prediction', 'epistemic_unc', 'aleatoric_unc', 'ood_prob', 'acq_score']
+output_types = ['original_wsi', 'mask', 'class', 'prediction', 'epistemic_unc', 'aleatoric_unc', 'ood_prob', 'acq_score']
 patch_stride = 256
 prepatching_factor = 0.5
 uncertainty_normalization = False
 
 patch_stride_resized = patch_stride * resize_factor * (1/prepatching_factor)
+
+color_GG3 = [-255, -255, 255]
+color_GG4 = [-255, 255, 255]
+color_GG5 = [-255, 255, -255]
+color_epistemic_unc = [-255, 255, -255]     # rafa: [255, 255, -255] arne: [255, -255, -255]
+color_aleatoric_unc = [255, -255, -255]     # rafa: [255, 255, -255] arne: [255, -255, -255]
+color_ood_score = [255, 255, -255]          # rafa: [255, 255, -255] arne: [255, -255, -255]
+color_acquisition_score = [255, 255, 255]   # rafa: [255, 255, 255] arne: [-255, 255, -255]
+wsi_greyscale = True
+
 
 
 def create_grid(x, y, values, dim):
@@ -62,12 +72,13 @@ def cut_and_save_image(wsi_masked, cut, wsi_name, output_type):
 
 
 def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
-    color_GG3 = [-255, -255, 255]
-    color_GG4 = [-255, 255, 255]
-    color_GG5 = [-255, 255, -255]
-    color_uncertainty = [255, 255, -255]
 
-    if output_type == 'mask':
+
+    if output_type == 'original_wsi':
+        shape = [dim[1], dim[0], 3]
+        mask = np.zeros(shape=shape)
+        mask_factor = 0.0
+    elif output_type == 'mask':
         mask_path = os.path.join(masks_dir, wsi_list[i] + '_mask.tiff')
         class_mask = skimage.io.MultiImage(mask_path)[0]
         class_mask = cv2.resize(class_mask, dim, interpolation=cv2.INTER_CUBIC)
@@ -80,6 +91,9 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
         mask = np.where(class_mask==4, color_GG4*mask_ones, mask).astype(np.uint8)
         mask = np.where(class_mask==5, color_GG5*mask_ones, mask).astype(np.uint8)
         mask_factor = 0.4
+        if wsi_greyscale:
+            wsi = cv2.cvtColor(wsi, cv2.COLOR_BGR2GRAY)
+            wsi = np.expand_dims(wsi, axis=2)
     elif output_type == 'class' or output_type == 'prediction':
         classes = wsi_patch_df[output_type]
         grid_gg3 = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], np.array((classes == 1), dtype=np.float16), dim)
@@ -87,12 +101,21 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
         grid_gg5 = create_grid(wsi_patch_df['x'], wsi_patch_df['y'], np.array((classes == 3), dtype=np.float16), dim)
         mask = np.clip(grid_gg3*color_GG3 + grid_gg4*color_GG4 + grid_gg5*color_GG5, a_min=-255, a_max=255).astype(np.int32)
         mask_factor = 0.2
+        if wsi_greyscale:
+            wsi = cv2.cvtColor(wsi, cv2.COLOR_BGR2GRAY)
+            wsi = np.expand_dims(wsi, axis=2)
     else:
         values = np.array(wsi_patch_df[output_type])
-        if output_type == 'ood_prob':
+        if output_type == 'epistemic_unc':
+            color_uncertainty = color_epistemic_unc
+        elif output_type == 'aleatoric_unc':
+            color_uncertainty = color_aleatoric_unc
+        elif output_type == 'ood_prob':
             values = (values - 0.1)
-        if output_type == 'acq_score':
+            color_uncertainty = color_ood_score
+        elif output_type == 'acq_score':
             values = (values + 0.1) * 2
+            color_uncertainty = color_acquisition_score
         if uncertainty_normalization:
             values = (values - np.min(values))/(np.max(values) - np.min(values))
         else:
@@ -101,6 +124,9 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
         mask = np.clip(grid*color_uncertainty, a_min=-255, a_max=255).astype(np.int32)
         mask_factor = 0.5
 
+        if wsi_greyscale:
+            wsi = cv2.cvtColor(wsi, cv2.COLOR_BGR2GRAY)
+            wsi = np.expand_dims(wsi, axis=2)
     wsi_masked = np.clip(wsi + mask_factor*mask, a_min=0, a_max=255).astype(np.uint8)
     cut_and_save_image(wsi_masked, cut, wsi_name, output_type)
 
