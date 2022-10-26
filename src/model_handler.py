@@ -369,7 +369,7 @@ class ModelHandler:
                     epistemic_total = np.trace(epistemic_unc_matrix)
             elif type == 'entropy_based':
                 entropy = self._calc_probabilistic_entropy(p_hat)
-                epistemic_total = entropy + np.mean(np.sum(np.multiply(p_hat, np.log(p_hat)), axis=-1), axis=0)
+                epistemic_total = entropy + np.mean(np.sum(np.multiply(p_hat, np.log(p_hat + 0.00001)), axis=-1), axis=0)
             else:
                 raise Exception('Invalid uncertainty_calulation: ' + type)
             epistemic_unc.append(epistemic_total)

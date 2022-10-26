@@ -49,8 +49,8 @@ else:
               'tab:red',
               'k']
     zorders = [0, 0, 0, 0, 0, 10]
-    num_runs = 2
-    max_index = 10
+    num_runs = 3
+    max_index = 11
     df = pd.DataFrame
     for m in range(len(model_dirs)):
         for r in range(num_runs):

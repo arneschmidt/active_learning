@@ -4,7 +4,9 @@ import pandas as pd
 import numpy as np
 import skimage.io
 import skimage.transform
+import matplotlib.pyplot as plt
 from scipy.interpolate import griddata
+from matplotlib.legend_handler import HandlerBase
 
 # best WSI:
 # 24ecf26ce811ea7f0116d7ea5388bc4a
@@ -13,8 +15,8 @@ from scipy.interpolate import griddata
 csv_path = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq00/test_predictions.csv'
 wsi_dir = '/home/arne/datasets/Panda/train_images/'
 masks_dir = '/home/arne/datasets/Panda/train_label_masks/'
-output_dir = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq00/visualization_rafa/'
-wsi_list = ['24ecf26ce811ea7f0116d7ea5388bc4a']
+output_dir = '/home/arne/projects/active_learning/experiment_output/a31d621ea058403b82a4a2ad755fc8fc_acq00/visualization_arne/'
+wsi_list = ['8d9bf04e714c959d4c571030c51ee9f5']
 wsi_cut = []
 resize_factor = 0.2
 output_types = ['original_wsi', 'mask', 'class', 'prediction', 'epistemic_unc', 'aleatoric_unc', 'ood_prob', 'acq_score']
@@ -27,11 +29,11 @@ patch_stride_resized = patch_stride * resize_factor * (1/prepatching_factor)
 color_GG3 = [-255, -255, 255]
 color_GG4 = [-255, 255, 255]
 color_GG5 = [-255, 255, -255]
-color_epistemic_unc = [-255, 255, -255]     # rafa: [255, 255, -255] arne: [255, -255, -255]
-color_aleatoric_unc = [255, -255, -255]     # rafa: [255, 255, -255] arne: [255, -255, -255]
-color_ood_score = [255, 255, -255]          # rafa: [255, 255, -255] arne: [255, -255, -255]
-color_acquisition_score = [255, 255, 255]   # rafa: [255, 255, 255] arne: [-255, 255, -255]
-wsi_greyscale = True
+color_epistemic_unc = [255, 255, -255]     # rafa: [255, 255, -255] arne: [255, -255, -255]
+color_aleatoric_unc = [255, 255, -255]    # rafa: [255, 255, -255] arne: [255, -255, -255]
+color_ood_score = [255, 255, -255]         # rafa: [255, 255, -255] arne: [255, -255, -255]
+color_acquisition_score = [-255, 255, -255]   # rafa: [255, 255, 255] arne: [-255, 255, -255]
+wsi_greyscale = False
 
 
 
@@ -130,6 +132,56 @@ def generate_wsi_with_mask(wsi, wsi_name, cut, wsi_patch_df, dim, output_type):
     wsi_masked = np.clip(wsi + mask_factor*mask, a_min=0, a_max=255).astype(np.uint8)
     cut_and_save_image(wsi_masked, cut, wsi_name, output_type)
 
+def create_legends():
+    # if acquisition:
+    #     figsize=(6, 2)
+    # else:
+    #     figsize=(2, 4)
+    def adjust_col_to_plt(color_vec):
+        col = np.array(color_vec) / 256
+        col = np.clip(col, a_min=0.0, a_max=1.0)
+        return col
+
+
+    fig, ax = plt.subplots()
+    list_color = ['w', adjust_col_to_plt(color_GG3), adjust_col_to_plt(color_GG4)]
+    list_mak = ["s", "s", "s"]
+    list_lab = ['Classes:', 'GG3', 'GG4']
+    list_markeredgewidth = [0.0, 1.0, 1.0]
+    list_markeredgecolor = ['w', 'k', 'k']
+
+    class MarkerHandler(HandlerBase):
+        def create_artists(self, legend, tup, xdescent, ydescent,
+                           width, height, fontsize, trans):
+            return [plt.Line2D([width / 2], [height / 2.], ls="",
+                               marker=tup[1], color=tup[0], markeredgewidth=tup[2], markeredgecolor=tup[3], transform=trans)]
+
+    first_legend = ax.legend(list(zip(list_color, list_mak, list_markeredgewidth, list_markeredgecolor)), list_lab,
+              handler_map={tuple: MarkerHandler()}, bbox_to_anchor=[0,1.0,0.33,0.1], mode="expand", borderaxespad=0.)
+    ax.add_artist(first_legend)
+
+    list_color = ['white', adjust_col_to_plt(color_aleatoric_unc), adjust_col_to_plt(color_acquisition_score)]
+    list_mak = ["o", "s", "s"]
+    list_markeredgewidth = [0.0, 1.0, 1.0]
+    list_markeredgecolor = ['w', 'k', 'k']
+    list_lab = ['Heatmap:', 'High Uncertainty', 'High Acq. Score']
+
+    bbox = [0,0.76,0.33,0.1]
+
+
+    second_legend= ax.legend(list(zip(list_color, list_mak, list_markeredgewidth, list_markeredgecolor)), list_lab,
+              handler_map={tuple: MarkerHandler()}, bbox_to_anchor=bbox, mode="expand", borderaxespad=0.)
+    ax.add_artist(second_legend)
+
+    name = 'wsi_legend'
+
+    plt.axis('off')
+    os.makedirs(output_dir, exist_ok=True)
+    path = os.path.join(output_dir, 'legend.png')
+    plt.axis("tight")  # gets rid of white border
+    # plt.axis("image")
+    plt.savefig(path, dpi=300)
+    plt.close(fig)
 
 if __name__ == "__main__":
     # In this whole script we use the following coordinate order:
@@ -142,6 +194,8 @@ if __name__ == "__main__":
     if len(wsi_list) == 0:
         wsi_list = np.unique(test_patch_df['wsi'])
         wsi_cut = []
+
+    # create_legends()
 
     for i in range(len(wsi_list)):
         print('Processing ' + wsi_list[i])
