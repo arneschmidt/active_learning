@@ -29,6 +29,9 @@ def config_logging():
         log_head_config['head_' + key] = head_config[key]
 
     al_config = config['data'].pop('active_learning')
+    if 'initial_images' in config['data']:
+        initial_images = config['data'].pop('initial_images')
+        mlflow.log_param('initial_images_n', len(initial_images))
     mlflow.log_params(al_config)
     acquisition_config = config['model'].pop('acquisition')
     mlflow.log_params(acquisition_config)

@@ -49,25 +49,32 @@ def get_start_label_ids(dataframe, wsi_dataframe, data_config):
     number_labels = data_config['active_learning']['start']['labels_per_class_and_wsi']
     sampled_indices = np.array([])
     selected_wsis = []
-    for class_id in class_ids:
-        for iter_wsi in range(number_wsis):
-            for attempt in range(10):
-                wsi_candidates = (wsi_dataframe['class_primary'] == int(class_id)) & (wsi_dataframe['Partition'] == 'train')
-                wsi_selection = np.random.choice(wsi_dataframe['slide_id'].loc[wsi_candidates], size=1)[0]
-                df_candidates = (dataframe['wsi'] == wsi_selection) & (dataframe['class'] == class_id)
-                if np.sum(df_candidates) >= number_labels and not (wsi_selection in selected_wsis):
-                    break
-                elif attempt == 9:
-                    raise Exception('Not enough start samples found. Choose a smaller number of labels per WSI.')
-            wsi_dataframe['labeled'].loc[wsi_dataframe['slide_id'] == wsi_selection] = True
-            selected_wsis.append(wsi_selection)
-            if number_labels != -1:
-                df_selection = np.random.choice(dataframe['index'].loc[df_candidates],
-                                                size=number_labels,
-                                                replace=False)
-            else:
-                df_selection = dataframe['index'].loc[dataframe['wsi'] == wsi_selection]
-            sampled_indices = np.concatenate([sampled_indices, df_selection])
+    if 'initial_images' in data_config.keys():
+        initial_images = data_config['initial_images']
+        sampled_indices = []
+        for i in range(len(initial_images)):
+            sampled_indices.append(int(dataframe['index'].loc[dataframe['image_path'].str.contains(initial_images[i])]))
+        selected_wsis = np.unique(dataframe['wsi'][sampled_indices])
+    else:
+        for class_id in class_ids:
+            for iter_wsi in range(number_wsis):
+                for attempt in range(10):
+                    wsi_candidates = (wsi_dataframe['class_primary'] == int(class_id)) & (wsi_dataframe['Partition'] == 'train')
+                    wsi_selection = np.random.choice(wsi_dataframe['slide_id'].loc[wsi_candidates], size=1)[0]
+                    df_candidates = (dataframe['wsi'] == wsi_selection) & (dataframe['class'] == class_id)
+                    if np.sum(df_candidates) >= number_labels and not (wsi_selection in selected_wsis):
+                        break
+                    elif attempt == 9:
+                        raise Exception('Not enough start samples found. Choose a smaller number of labels per WSI.')
+                wsi_dataframe['labeled'].loc[wsi_dataframe['slide_id'] == wsi_selection] = True
+                selected_wsis.append(wsi_selection)
+                if number_labels != -1:
+                    df_selection = np.random.choice(dataframe['index'].loc[df_candidates],
+                                                    size=number_labels,
+                                                    replace=False)
+                else:
+                    df_selection = dataframe['index'].loc[dataframe['wsi'] == wsi_selection]
+                sampled_indices = np.concatenate([sampled_indices, df_selection])
     return sampled_indices, selected_wsis
 #
 #

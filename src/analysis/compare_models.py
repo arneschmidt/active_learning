@@ -41,14 +41,28 @@ if table == 'abl':
 else:
     input_dir = '/home/arne/projects/active_learning/experiment_output/mlflow_artifacts/'
     output_png = 'dataset_dependent/panda/experiments/final_experiments/final_results.png'
-    model_dirs = ['bnn_bald', 'bnn_en', 'bnn_ep', 'bnn_ms', 'focal']
-    model_names = ['BALD', 'EN', 'EP', 'MS', 'FocAL']
+    model_dirs = ['bnn_bald', 'bnn_en', 'bnn_ep', 'bnn_ms', 'focal', 'bnn_ra']
+    model_names = ['BALD', 'EN', 'EP', 'MS', 'FocAL', 'RA']
     colors = ['tab:blue',
               'tab:orange',
               'tab:green',
               'tab:red',
-              'k']
-    zorders = [0, 0, 0, 0, 0, 10]
+              'k',
+              'tab:pink']
+    # model_dirs = ['bnn_bald', 'focal']
+    # model_names = ['BALD',  'FocAL']
+    # colors = ['k',
+    #           'tab:pink']
+    #
+    # model_dirs = ['bnn_bald',  'bnn_ep', 'bnn_ms', 'focal', 'bnn_ra']
+    # model_names = ['BALD',  'EP', 'MS', 'FocAL', 'RA']
+    # colors = ['tab:blue',
+    #           'tab:green',
+    #           'tab:red',
+    #           'k',
+    #           'tab:pink']
+
+    zorders = [0, 0, 0, 0, 0, 10, 0]
     num_runs = 3
     max_index = 11
     df = pd.DataFrame
@@ -78,7 +92,7 @@ for i in range(int(len(df.columns)/num_runs)):
         ax.plot(steps, mean, color=colors[i],  marker=".",zorder = zorders[i], label=model_names[i])
     else:
         std = np.std(np.array(cols_of_interest), axis=1)
-        ax.errorbar(steps, mean, yerr=std, marker=".",
+        ax.errorbar(steps, mean, yerr=std, color=colors[i],  marker=".",zorder = zorders[i],
                     label=model_names[i])
     auc_m = auc(steps.astype(np.int), mean)
     print(model_names[i] + ' AUC: ' + str(auc_m))

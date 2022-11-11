@@ -1,8 +1,6 @@
 # TODO
-# fix bug of logging _1, _2, _3 metrics
-# repatch panda
-# take best validation model
-# print acquisition score and entropy
+# check small-panda comparison (attention: early stopping > 100 is different!)
+# maybe try imbalanced start (instead of 100 per class)
 
 
 import argparse
