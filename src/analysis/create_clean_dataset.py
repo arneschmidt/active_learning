@@ -6,7 +6,7 @@ import shutil
 dataset_path = '/home/arne/data/Panda/Panda_patches_center/'
 patch_df_file = 'train_patches.csv'
 image_dir = 'images/'
-output_dir = 'subselection/'
+output_dir = 'subselection3/'
 patch_df = pd.read_csv(dataset_path + patch_df_file)
 
 n = len(patch_df)

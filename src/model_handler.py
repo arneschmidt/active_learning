@@ -457,6 +457,9 @@ class ModelHandler:
         elif acquisition_strategy == 'entropy':
             preds = self.get_predictions(features)
             acq_scores = self.get_complete_entropy(preds, mode='probabilistic')
+        elif acquisition_strategy == 'vr':
+            preds = self.get_predictions(features)
+            acq_scores = 1 - np.max(np.mean(preds, axis=0), axis=1)
         elif acquisition_strategy == 'det_entropy':
             preds = self.get_predictions(features)
             acq_scores = self.get_complete_entropy(preds, mode='deterministic')

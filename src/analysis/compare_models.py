@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 from sklearn.metrics import auc
+from scipy.stats import sem
 
 table = 'sota' # 'abl' or 'sota'
 
@@ -41,28 +42,29 @@ if table == 'abl':
 else:
     input_dir = '/home/arne/projects/active_learning/experiment_output/mlflow_artifacts/'
     output_png = 'dataset_dependent/panda/experiments/final_experiments/final_results.png'
-    model_dirs = ['bnn_bald', 'bnn_en', 'bnn_ep', 'bnn_ms', 'focal', 'bnn_ra']
-    model_names = ['BALD', 'EN', 'EP', 'MS', 'FocAL', 'RA']
+    output_png_zoom = 'dataset_dependent/panda/experiments/final_experiments/final_results_zoomlarge.png'
+    model_dirs = ['bnn_ra', 'bnn_en',  'bnn_bald', 'bnn_ms', 'bnn_ep',  'focal', ]
+    model_names = ['RA', 'EN', 'BALD', 'MS', 'EP', 'FocAL', ]
     colors = ['tab:blue',
               'tab:orange',
               'tab:green',
               'tab:red',
-              'k',
-              'tab:pink']
+              'tab:purple',
+              'k']
     # model_dirs = ['bnn_bald', 'focal']
     # model_names = ['BALD',  'FocAL']
     # colors = ['k',
     #           'tab:pink']
     #
-    # model_dirs = ['bnn_bald',  'bnn_ep', 'bnn_ms', 'focal', 'bnn_ra']
-    # model_names = ['BALD',  'EP', 'MS', 'FocAL', 'RA']
+    # model_dirs = ['bnn_ra',  'bnn_bald', 'bnn_ms', 'bnn_ep',  'focal', ]
+    # model_names = ['RA', 'BALD', 'MS', 'EP', 'FocAL']
     # colors = ['tab:blue',
     #           'tab:green',
     #           'tab:red',
-    #           'k',
-    #           'tab:pink']
+    #           'tab:purple',
+    #           'k']
 
-    zorders = [0, 0, 0, 0, 0, 10, 0]
+    zorders = [0, 0, 0, 0, 0, 10]
     num_runs = 3
     max_index = 11
     df = pd.DataFrame
@@ -91,15 +93,40 @@ for i in range(int(len(df.columns)/num_runs)):
     if table == 'abl':
         ax.plot(steps, mean, color=colors[i],  marker=".",zorder = zorders[i], label=model_names[i])
     else:
-        std = np.std(np.array(cols_of_interest), axis=1)
+        std = sem(np.array(cols_of_interest), axis=1)
         ax.errorbar(steps, mean, yerr=std, color=colors[i],  marker=".",zorder = zorders[i],
                     label=model_names[i])
     auc_m = auc(steps.astype(np.int), mean)
-    print(model_names[i] + ' AUC: ' + str(auc_m))
-ax.set_xticks(ax.get_xticks()[::2])
+    # print(model_names[i] + ' AUC: ' + str(auc_m))
+    print(model_names[i] + ' Final mean K: ' + str(mean[-1]) + ' SE: ' + str(std[-1]))
+if table == 'abl':
+    ax.set_xticks(ax.get_xticks()[::2])
+else:
+    ax.set_xticks(steps)
+    plt.ylim([0.45, 0.775])
+
 plt.ylabel('Cohens quadratic kappa')
 plt.xlabel('Labeled image patches')
-plt.legend()
-plt.savefig(output_png)
+plt.legend(loc='upper left')
+plt.savefig(output_png, bbox_inches='tight')
+
+if table == 'sota':
+    # min_index = 2
+    # df = df.iloc[min_index:,:]
+    steps = np.array(df.index)
+    plt.figure()
+    fig, ax = plt.subplots(figsize=(3.7, 2.5))
+    for i in range(int(len(df.columns) / num_runs)):
+        column = i * num_runs
+        cols_of_interest = df.iloc[:, column:column + num_runs]
+        mean = np.array(np.mean(cols_of_interest, axis=1))
+        std = sem(np.array(cols_of_interest), axis=1)
+        ax.errorbar(steps, mean, yerr=std, color=colors[i], marker=".", zorder=zorders[i],
+                    label=model_names[i])
+    ax.set_xticks(steps)
+    plt.ylim([0.65, 0.77])
+    plt.xlim([1000, 4500])
+    ax.set_xticks([])
+    plt.savefig(output_png_zoom, bbox_inches='tight')
 
 
