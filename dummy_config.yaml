@@ -2,27 +2,27 @@
 random_seed: 0
 model:
   test_on_the_fly: True
-  batch_size: 8
-  epochs: 200
+  batch_size: 16
+  epochs: 1
   learning_rate: 0.0001
-  lr_decrease_epochs: 100 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
+  lr_decrease_epochs: 1 # lr will be multiplied by 0.1 after this epoch; -1 for disabling
   optimizer: adam # adam, sgd
   class_weighted_loss: True
   loss_function: categorical_crossentropy # "categorical_crossentropy", "focal_loss"
   metrics_patch_level: True
   metrics_wsi_level: True
-  metrics_for_monitoring: val_cohens_quadratic_kappa # 'val_cohens_quadratic_kappa', 'val_f1_mean', 'None'
+  metrics_for_monitoring: val_f1_mean
   load_model: None # 'None' or path to experiment folder which containes 'models' directory with .h5 files
   save_model: False # True or False
   feature_extractor:
-    type: efficientnetb3 # "fsconv", "simple_cnn", "mobilenetv2", "resnet50", "efficientnetb0", "efficientnetb1", "eff.."
+    type: efficientnetb0 # "fsconv", "simple_cnn", "mobilenetv2", "resnet50", "efficientnetb0", "efficientnetb1", "eff.."
     global_max_pooling: False
     num_output_features: 128 # feature dimension of feature extractor output, set to 0 to skip this layer
     output_activation: relu # sigmoid, relu
     dropout: 0.5
-    multiscale: True
+    multiscale: False
   head:
-    type: bnn # deterministic, bnn
+    type: deterministic # deterministic, bnn
     deterministic:
       dropout: 0.0
       number_hidden_units: 128 # feature dimension of hidden layer, set to 0 to skip this layer
@@ -33,9 +33,9 @@ model:
       extra_layer: True
       weight_std: 0.05
   wsi_level_model:
-    use: True # if False, the wsi metrics will be calculated based on the patch classiciation
+    use: False # if false, the wsi metrics will be calculated based on the patch classiciation
     access_to_all_wsis: True # if False, only the acquired WSIs (with patch labels) are used for training
-    learning_rate: 0.01
+    learning_rate: 0.001
   acquisition:
     strategy: focal # focal, bald, epistemic, max_std, entropy,  det_entropy, random
     wsi_selection: uncertainty_max # 'random', 'uncertainty_max', 'uncertainty_mean', 'gradual_learning'
@@ -48,7 +48,8 @@ model:
       ood_factor: 1.0
 
 data:
-  dataset_config: ./dataset_dependent/panda/config_clean.yaml
+#  dataset_config: ./dataset_dependent/panda/dummy_config.yaml
+  dataset_config: ./dataset_dependent/panda/dummy_config.yaml
   supervision: active_learning # 'supervised', 'active_learning'
   augmentation:
     channel_shift_range: 0.2
@@ -62,55 +63,25 @@ data:
     brightness: 0.2 # between 0 and 1
   active_learning:
     start:
-      wsis_per_class: 25
+      wsis_per_class: 2
       labels_per_class_and_wsi: 5 # -1 (all) or number of labels per wsi
     step:
-      wsis: 100
+      wsis: 1
       labels_per_wsi: 5
       flexible_labeling: True # if True, the labels of one step can be distributed freely within the selected WSIs
-      wsi_independent_labeling: True
-      total_steps: 20
+      wsi_independent_labeling: False
+      total_steps: 18
       acceleration:
         use: False
-        wsis: 100
-        after_step: 4
+        wsis: 2
+        after_step: 2
 
 logging:
   log_artifacts: True
   save_images: True
-  interval: 5
+  interval: 1
   test_on_the_fly: True
   run_name: efficientnetb1
   tracking_url: /work/work_arne/mlflow_server
   test_pred_wsis:
-    - '9f887e6311f6062c5741bfae853edb80'
-    - '24ecf26ce811ea7f0116d7ea5388bc4a'
-    - '0f958c8bbbc828b2e043e49ea39e16e2'
-    - '1f43e244b01c44b24a7086ed2dee7bff'
-    - '3f3aba7575fc6aed6c5512cfa3c11e86'
-    - '5e165e0f062426606dc1b5c217689129'
-    - '6aa05e4c2cd649f22d309c40540b4230'
-    - '07afad2271546de1802035829d3b507d'
-    - '8c8089988706688445a7a3ebb90c8e0a'
-    - '8d9bf04e714c959d4c571030c51ee9f5'
-    - '8e9fa23bd67888cbddd7203f3a2db9fe'
-    - '47ebeac86bb4d9eb51f2cb5ce110a823'
-    - '76a17a9705fd4ab2ccdcdd83fb7245ce'
-    - '78d70c1732ef444ad636a5d3e2ae733c'
-    - '787b336dec5e8a7dd9d993a9b23b773c'
-    - '1784ab09ff0d41a78a89e36226bf3eb5'
-    - '4520cef8cba78d1b80ed7de894c416b5'
-    - '5000f1e3635cd4bf1ac50930e885e935'
-    - '6465a5ab1539fe69d2392408606dfade'
-    - '9693d8e04d91297655abf8424d769bef'
-    - '02146992e1884bf87012fd0d5d05cdb9'
-    - '63006577b07056d2789dedce40da466d'
-    - 'a6f080dbb9bf42ed3e8510972595c71c'
-    - 'a09f18e1b9cc5c4874d683b06dad9802'
-    - 'b9ddd69769597b7910120d47e6a93f06'
-    - 'b57e87397f4281b1d3a918c7bd2c9e3a'
-    - 'b289df6139ddbf04d953c2c01ec60405'
-    - 'bdcf536c984be757589271cd6a80066e'
-    - 'c686992bf74305e9f9965fd85c15eb4d'
-    - 'd1ec2a1c9426ba4bcd9a5bb5fd047ee9'
-    - 'f6df497ddcb8f033d7c28c05fe242aaa'
+    - '00c46b336b5b06423fcdec1b4d5bee06'
