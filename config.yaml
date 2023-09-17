@@ -48,7 +48,7 @@ model:
       ood_factor: 1.0
 
 data:
-  dataset_config: ./dataset_dependent/panda/config.yaml
+  dataset_config: ./dataset_dependent/panda/config_clean.yaml
   supervision: active_learning # 'supervised', 'active_learning'
   augmentation:
     channel_shift_range: 0.2

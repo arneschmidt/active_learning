@@ -146,7 +146,7 @@ def create_legends():
     fig, ax = plt.subplots()
     list_color = ['w', adjust_col_to_plt(color_GG3), adjust_col_to_plt(color_GG4)]
     list_mak = ["s", "s", "s"]
-    list_lab = ['Classes:', 'GG3', 'GG4']
+    list_lab = ['Classes:', 'Gleason 3', 'Gleason 4']
     list_markeredgewidth = [0.0, 1.0, 1.0]
     list_markeredgecolor = ['w', 'k', 'k']
 
@@ -195,33 +195,33 @@ if __name__ == "__main__":
         wsi_list = np.unique(test_patch_df['wsi'])
         wsi_cut = []
 
-    # create_legends()
-
-    for i in range(len(wsi_list)):
-        print('Processing ' + wsi_list[i])
-        wsi_path = os.path.join(wsi_dir, wsi_list[i] + '.tiff')
-        wsi = skimage.io.MultiImage(wsi_path)
-        if len(wsi) > 0:
-            wsi = wsi[0]
-        else:
-            print('No image data! WSI ' + wsi_list[i])
-            continue
-        wsi_patch_df = test_patch_df[test_patch_df['wsi'] == wsi_list[i]]
-
-        width = int(wsi.shape[1] * resize_factor)
-        height = int(wsi.shape[0] * resize_factor)
-
-        dim = (width, height) # for resizing
-        wsi = cv2.resize(wsi, dim, interpolation=cv2.INTER_CUBIC)
-
-        cut_resized = []
-        if len(wsi_cut)>0:
-            if len(wsi_cut[i]) > 0:
-                cut_resized = np.array(wsi_cut[i] * resize_factor).astype(np.int)
-
-        for j in range(len(output_types)):
-            print('Visualizing ' + output_types[j])
-            generate_wsi_with_mask(wsi, wsi_list[i], cut_resized, wsi_patch_df, dim, output_types[j])
+    create_legends()
+    #
+    # for i in range(len(wsi_list)):
+    #     print('Processing ' + wsi_list[i])
+    #     wsi_path = os.path.join(wsi_dir, wsi_list[i] + '.tiff')
+    #     wsi = skimage.io.MultiImage(wsi_path)
+    #     if len(wsi) > 0:
+    #         wsi = wsi[0]
+    #     else:
+    #         print('No image data! WSI ' + wsi_list[i])
+    #         continue
+    #     wsi_patch_df = test_patch_df[test_patch_df['wsi'] == wsi_list[i]]
+    #
+    #     width = int(wsi.shape[1] * resize_factor)
+    #     height = int(wsi.shape[0] * resize_factor)
+    #
+    #     dim = (width, height) # for resizing
+    #     wsi = cv2.resize(wsi, dim, interpolation=cv2.INTER_CUBIC)
+    #
+    #     cut_resized = []
+    #     if len(wsi_cut)>0:
+    #         if len(wsi_cut[i]) > 0:
+    #             cut_resized = np.array(wsi_cut[i] * resize_factor).astype(np.int)
+    #
+    #     for j in range(len(output_types)):
+    #         print('Visualizing ' + output_types[j])
+    #         generate_wsi_with_mask(wsi, wsi_list[i], cut_resized, wsi_patch_df, dim, output_types[j])
 
 
 
